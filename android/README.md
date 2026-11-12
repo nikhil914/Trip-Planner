@@ -25,6 +25,8 @@ cd android
 
 The `Android` workflow in `.github/workflows/android.yml` runs the tests and the release build on every push that touches `android/`, prints the APK size and uploads the APK as a build artifact.
 
+Pushing a tag such as `v0.1.0` runs the same build and attaches the APK to a GitHub release of that name.
+
 ## Try it without a server
 
 The sync endpoints (`/api/pair`, `/api/trips/{id}/sync`, `/api/trips/{id}/sync/push`) are not built yet. On the pairing screen choose **Try the demo trip** to load a three-day sample that starts today. Check-offs and delays work locally and queue in the outbox.
