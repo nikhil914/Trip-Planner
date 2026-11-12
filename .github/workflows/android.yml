@@ -35,7 +35,27 @@ jobs:
       - name: Unit tests
         run: ./gradlew :app:testDebugUnitTest
 
+      - name: Prepare signing key
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "RELEASE_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+            echo "signed=release key" >> "$GITHUB_OUTPUT"
+          elif [ "${GITHUB_REF#refs/tags/v}" != "$GITHUB_REF" ]; then
+            echo "::error::A tagged release needs the RELEASE_KEYSTORE_BASE64 secret."
+            exit 1
+          else
+            echo "signed=debug key" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Release build
+        env:
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: ./gradlew :app:assembleRelease
 
       - name: APK size
@@ -45,6 +65,7 @@ jobs:
           echo "APK: $apk"
           echo "Size: $bytes bytes"
           echo "### Release APK: $(awk "BEGIN { printf \"%.2f\", $bytes / 1048576 }") MB" >> "$GITHUB_STEP_SUMMARY"
+          echo "Signed with the ${{ steps.signing.outputs.signed }}." >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         with:

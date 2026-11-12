@@ -27,6 +27,31 @@ The `Android` workflow in `.github/workflows/android.yml` runs the tests and the
 
 Pushing a tag such as `v0.1.0` runs the same build and attaches the APK to a GitHub release of that name.
 
+## Release signing
+
+The release build signs with your own key when these are set, and with the debug key otherwise.
+
+Create the key once and keep the file and passwords safe. Every later update must be signed with the same key.
+
+```sh
+keytool -genkeypair -v -keystore release.jks -alias fieldguide \
+  -keyalg RSA -keysize 2048 -validity 10000
+base64 -w0 release.jks        # macOS: base64 -i release.jks
+```
+
+Add four repository secrets under Settings > Secrets and variables > Actions:
+
+| Secret | Value |
+| --- | --- |
+| `RELEASE_KEYSTORE_BASE64` | output of the `base64` command |
+| `RELEASE_KEYSTORE_PASSWORD` | keystore password |
+| `RELEASE_KEY_ALIAS` | `fieldguide` |
+| `RELEASE_KEY_PASSWORD` | key password |
+
+For a local signed build, export `RELEASE_KEYSTORE_FILE` (absolute path to `release.jks`), `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS` and `RELEASE_KEY_PASSWORD` before `./gradlew :app:assembleRelease`. Never commit the keystore.
+
+A tagged release fails if the keystore secret is missing, so a published APK is always signed with the release key.
+
 ## Try it without a server
 
 The sync endpoints (`/api/pair`, `/api/trips/{id}/sync`, `/api/trips/{id}/sync/push`) are not built yet. On the pairing screen choose **Try the demo trip** to load a three-day sample that starts today. Check-offs and delays work locally and queue in the outbox.
@@ -38,6 +63,5 @@ The sync endpoints (`/api/pair`, `/api/trips/{id}/sync`, `/api/trips/{id}/sync/p
 
 ## Not done yet
 
-- Release signing. The release build uses the debug key so a CI build installs directly.
 - Database migrations. The schema is version 1 with no migrations; add them before the schema changes after a real release.
 - Instrumented tests for the DAO and the worker.
