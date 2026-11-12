@@ -24,6 +24,18 @@ android {
         localeFilters += "en"
     }
 
+    val keystorePath = System.getenv("RELEASE_KEYSTORE_FILE").orEmpty()
+    val releaseSigning = if (keystorePath.isNotEmpty()) {
+        signingConfigs.create("release") {
+            storeFile = file(keystorePath)
+            storePassword = System.getenv("RELEASE_KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("RELEASE_KEY_ALIAS")
+            keyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+        }
+    } else {
+        null
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
@@ -35,8 +47,8 @@ android {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             manifestPlaceholders["cleartext"] = "false"
-            // Signed with the debug key so the APK installs straight from CI. Replace before any store upload.
-            signingConfig = signingConfigs.getByName("debug")
+            // Without a release keystore in the environment the APK is signed with the debug key so it still installs.
+            signingConfig = releaseSigning ?: signingConfigs.getByName("debug")
         }
     }
 
