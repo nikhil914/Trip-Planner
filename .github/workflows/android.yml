@@ -7,6 +7,12 @@ on:
     paths: ["android/**", ".github/workflows/android.yml"]
   pull_request:
     paths: ["android/**", ".github/workflows/android.yml"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, for example v0.1.0"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -44,8 +50,8 @@ jobs:
             printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
             echo "RELEASE_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
             echo "signed=release key" >> "$GITHUB_OUTPUT"
-          elif [ "${GITHUB_REF#refs/tags/v}" != "$GITHUB_REF" ]; then
-            echo "::error::A tagged release needs the RELEASE_KEYSTORE_BASE64 secret."
+          elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] || [ "${GITHUB_REF#refs/tags/v}" != "$GITHUB_REF" ]; then
+            echo "::error::A release needs the RELEASE_KEYSTORE_BASE64 secret."
             exit 1
           else
             echo "signed=debug key" >> "$GITHUB_OUTPUT"
@@ -74,7 +80,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -88,8 +94,17 @@ jobs:
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version || github.ref_name }}
         run: |
+          if ! printf '%s' "$VERSION" | grep -Eq '^v[0-9]+(\.[0-9]+){1,2}$'; then
+            echo "::error::Version must look like v0.1.0."
+            exit 1
+          fi
           apk=$(ls dist/*.apk | head -n 1)
-          mv "$apk" "dist/field-guide-$GITHUB_REF_NAME.apk"
-          gh release create "$GITHUB_REF_NAME" "dist/field-guide-$GITHUB_REF_NAME.apk" \
-            --repo "$GITHUB_REPOSITORY" --title "Field Guide $GITHUB_REF_NAME" --generate-notes
+          mv "$apk" "dist/field-guide-$VERSION.apk"
+          if gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload "$VERSION" "dist/field-guide-$VERSION.apk" --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$VERSION" "dist/field-guide-$VERSION.apk" --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" --title "Field Guide $VERSION" --generate-notes
+          fi
