@@ -25,7 +25,7 @@ cd android
 
 The `Android` workflow in `.github/workflows/android.yml` runs the tests and the release build on every push that touches `android/`, prints the APK size and uploads the APK as a build artifact.
 
-Pushing a tag such as `v0.1.0` runs the same build and attaches the APK to a GitHub release of that name.
+To publish a release, open Actions > Android > Run workflow and enter a version such as `v0.1.0`. The workflow builds, signs and attaches the APK to a GitHub release of that name, creating the tag. Pushing a `v*` tag does the same.
 
 ## Release signing
 
@@ -50,7 +50,7 @@ Add four repository secrets under Settings > Secrets and variables > Actions:
 
 For a local signed build, export `RELEASE_KEYSTORE_FILE` (absolute path to `release.jks`), `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS` and `RELEASE_KEY_PASSWORD` before `./gradlew :app:assembleRelease`. Never commit the keystore.
 
-A tagged release fails if the keystore secret is missing, so a published APK is always signed with the release key.
+A release fails if the keystore secret is missing, so a published APK is always signed with the release key.
 
 ## Try it without a server
 
