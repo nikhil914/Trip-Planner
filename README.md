@@ -5,11 +5,13 @@ Plan a trip on desktop, then follow it offline on Android with no location or ba
 Two parts:
 
 - **Web builder** (`web/`): Next.js workspace for collecting places, parsing map links and blogs, and dragging activities, shopping items and food stops into a day-by-day timeline.
-- **Android companion** (`android/`, not started): offline Kotlin + Compose + Room app that shows the day plan, morning checklist, nearby errands, local-script flashcards and one-tap navigation.
+- **Android companion** (`android/`): offline Kotlin + Compose + Room app that shows the day plan, morning checklist, nearby errands, local-script flashcards and one-tap navigation.
 
 ## Status
 
-The web workspace runs locally with browser storage (see [web/README.md](web/README.md)). Database, sign-in, sync and the Android app are not started.
+- Web: workspace, accounts with an admin page, database, and the phone sync endpoints. See [web/README.md](web/README.md).
+- Android: offline app that pairs with the web app, pulls the trip and pushes check-offs and delays. See [android/README.md](android/README.md). Signed APKs are published under Releases.
+- Not built yet: ticket and PDF attachments, password reset.
 
 ## Docs
 

@@ -20,6 +20,7 @@ const TABS: { id: DrawerTab; label: string }[] = [
 
 const UNROLL_ERRORS: Record<string, string> = {
   not_a_maps_link: "That is not a Google Maps link.",
+  signed_out: "Sign in to continue.",
   google_throttled: "Google is rate-limiting link lookups from this server. Try again in a minute.",
   too_many_redirects: "The link redirected too many times.",
   unparseable: "The link has no place name or pin.",

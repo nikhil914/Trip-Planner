@@ -2,6 +2,7 @@
 
 import type { BlockDraft } from "@/lib/types";
 import { resolveOne } from "./lib/places-core";
+import { currentUser } from "./lib/session";
 
 // The exact pin. Never the @lat,lng pair, which is the camera viewport centre.
 const PIN_RE = /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/;
@@ -11,7 +12,7 @@ const MAPS_HOST_RE =
 
 export type UnrollResult =
   | { ok: true; draft: BlockDraft; expandedUrl: string }
-  | { ok: false; error: "not_a_maps_link" | "google_throttled" | "too_many_redirects" | "unparseable" | "network" };
+  | { ok: false; error: "not_a_maps_link" | "google_throttled" | "too_many_redirects" | "unparseable" | "network" | "signed_out" };
 
 async function expandMapsUrl(input: string): Promise<string> {
   let current = input;
@@ -66,6 +67,7 @@ function parseMapsUrl(expanded: string) {
 }
 
 export async function unrollMapsLinkAction(url: string): Promise<UnrollResult> {
+  if (!(await currentUser())) return { ok: false, error: "signed_out" };
   let expanded: string;
   try {
     expanded = await expandMapsUrl(url.trim());

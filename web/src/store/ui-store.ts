@@ -10,6 +10,7 @@ interface UiState {
   focusedDayId: string | null;
   paletteOpen: boolean;
   tripDialogOpen: boolean;
+  phoneDialogOpen: boolean;
   dragging: DragData | null;
   dropPreview: { dayId: string; minute: number } | null;
   set(patch: Partial<Omit<UiState, "set">>): void;
@@ -23,6 +24,7 @@ export const useUiStore = create<UiState>((set) => ({
   focusedDayId: null,
   paletteOpen: false,
   tripDialogOpen: false,
+  phoneDialogOpen: false,
   dragging: null,
   dropPreview: null,
   set: (patch) => set(patch),

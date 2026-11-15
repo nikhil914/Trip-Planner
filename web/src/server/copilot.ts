@@ -6,6 +6,7 @@ import type { BlockDraft, ItemDraft } from "@/lib/types";
 import { ModelNotConfiguredError, resolveModel } from "./lib/model";
 import { resolveOne } from "./lib/places-core";
 import { fetchPublicText, htmlToText } from "./lib/safe-fetch";
+import { currentUser } from "./lib/session";
 
 const Suggestion = z.object({
   category: z.enum(["EAT_SUGGESTION", "TO_BUY"]).describe("EAT_SUGGESTION for a dining spot, TO_BUY for a shopping item"),
@@ -57,6 +58,7 @@ function failure(e: unknown): CopilotResult {
 }
 
 export async function fillDayGapsAction(input: GapFillInput): Promise<CopilotResult> {
+  if (!(await currentUser())) return { ok: false, error: "Sign in to continue." };
   if (input.blocks.length === 0) return { ok: false, error: "Schedule at least one activity on this day first" };
   try {
     const { output } = await generateText({
@@ -107,6 +109,7 @@ export async function fillDayGapsAction(input: GapFillInput): Promise<CopilotRes
 }
 
 export async function extractFromUrlAction(url: string, destination: string): Promise<CopilotResult> {
+  if (!(await currentUser())) return { ok: false, error: "Sign in to continue." };
   let text: string;
   try {
     text = htmlToText(await fetchPublicText(url.trim())).slice(0, 40_000);
