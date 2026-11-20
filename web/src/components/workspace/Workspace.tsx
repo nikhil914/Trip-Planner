@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useEffect } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -18,12 +19,15 @@ import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { formatDay, PX_PER_MIN, SNAP_MIN, snapMinute } from "@/lib/time";
 import type { CartTab, DragData, DropData } from "@/lib/types";
 import { redo, undo, useTripStore } from "@/store/trip-store";
+import { signOutAction } from "@/server/account";
 import { useUiStore } from "@/store/ui-store";
 import { OverlayCard } from "./cards";
 import { layeredCollision } from "./collision";
 import { CommandPalette } from "./CommandPalette";
 import { CopilotDrawer } from "./CopilotDrawer";
+import { PhoneDialog } from "./PhoneDialog";
 import { StagingCart } from "./StagingCart";
+import { useSyncStore, useTripSync } from "./sync";
 import { TimelineGrid } from "./TimelineGrid";
 import { TripDialog } from "./TripDialog";
 import { Button, Kbd } from "./ui";
@@ -103,7 +107,7 @@ function onKeyDown(e: KeyboardEvent) {
     return ui.set({ paletteOpen: !ui.paletteOpen });
   }
   const target = e.target as HTMLElement | null;
-  if (target?.closest("input, textarea, select, [contenteditable=true]") || ui.paletteOpen || ui.tripDialogOpen) return;
+  if (target?.closest("input, textarea, select, [contenteditable=true]") || ui.paletteOpen || ui.tripDialogOpen || ui.phoneDialogOpen) return;
 
   if (mod && key === "z") {
     e.preventDefault();
@@ -140,7 +144,30 @@ function onKeyDown(e: KeyboardEvent) {
   }
 }
 
-function TopBar() {
+export interface WorkspaceUser {
+  id: string;
+  name: string;
+  role: "ADMIN" | "USER";
+}
+
+function SaveStatus() {
+  const status = useSyncStore((s) => s.status);
+  const error = useSyncStore((s) => s.error);
+  if (status === "error") {
+    return (
+      <span className="text-xs text-red-400" title={error ?? undefined} role="status">
+        Not saved. Retrying…
+      </span>
+    );
+  }
+  return (
+    <span className="text-xs text-neutral-600" role="status">
+      {status === "saving" ? "Saving…" : "Saved"}
+    </span>
+  );
+}
+
+function TopBar({ user }: { user: WorkspaceUser }) {
   const trip = useTripStore((s) => s.trip);
   const dayCount = useTripStore((s) => s.days.length);
   return (
@@ -152,31 +179,35 @@ function TopBar() {
         {trip.destinationLabel} · {formatDay(trip.startDate)} · {dayCount} {dayCount === 1 ? "day" : "days"}
       </span>
       <div className="ml-auto flex items-center gap-2">
+        <SaveStatus />
         <Button onClick={undo} aria-label="Undo">Undo</Button>
         <Button onClick={redo} aria-label="Redo">Redo</Button>
         <Button onClick={() => useUiStore.getState().set({ paletteOpen: true })}>
           Commands <Kbd>⌘K</Kbd>
         </Button>
+        <Button onClick={() => useUiStore.getState().set({ phoneDialogOpen: true })}>Phone</Button>
+        {user.role === "ADMIN" && (
+          <Link href="/admin" className="text-xs text-neutral-400 hover:text-amber-300">
+            Admin
+          </Link>
+        )}
+        <form action={signOutAction}>
+          <Button type="submit" title={`Signed in as ${user.name}`}>
+            Sign out
+          </Button>
+        </form>
       </div>
     </header>
   );
 }
 
-export default function Workspace() {
-  const [ready, setReady] = useState(false);
+export default function Workspace({ user }: { user: WorkspaceUser }) {
+  const ready = useTripSync(user.id);
   const dragging = useUiStore((s) => s.dragging);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
-
-  // The saved trip lives in localStorage, so it is loaded after the first paint to keep server and client markup equal.
-  useEffect(() => {
-    void Promise.resolve(useTripStore.persist.rehydrate()).then(() => {
-      useTripStore.temporal.getState().clear();
-      setReady(true);
-    });
-  }, []);
 
   useEffect(() => {
     window.addEventListener("keydown", onKeyDown);
@@ -187,7 +218,7 @@ export default function Workspace() {
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-black text-neutral-200">
-      <TopBar />
+      <TopBar user={user} />
       <DndContext
         id="trip-workspace"
         sensors={sensors}
@@ -206,6 +237,7 @@ export default function Workspace() {
       </DndContext>
       <CommandPalette />
       <TripDialog />
+      <PhoneDialog />
     </div>
   );
 }

@@ -2,12 +2,14 @@
 
 import type { PlaceHit } from "@/lib/types";
 import { searchPlaces, type PlaceSource } from "./lib/places-core";
+import { currentUser } from "./lib/session";
 
 export type PlaceSearchResult =
   | { ok: true; source: PlaceSource; hits: PlaceHit[] }
   | { ok: false; error: string };
 
 export async function searchPlacesAction(query: string, near?: { lat: number; lng: number }): Promise<PlaceSearchResult> {
+  if (!(await currentUser())) return { ok: false, error: "Sign in to continue." };
   const q = query.trim().slice(0, 200);
   if (q.length < 2) return { ok: true, source: "osm", hits: [] };
   try {
