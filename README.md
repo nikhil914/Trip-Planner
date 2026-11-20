@@ -9,9 +9,9 @@ Two parts:
 
 ## Status
 
-- Web: workspace, accounts with an admin page, database, and the phone sync endpoints. See [web/README.md](web/README.md).
+- Web: workspace, accounts with an admin page, database, phone sync, ticket attachments and an MCP connector for adding bookings from a chat app. See [web/README.md](web/README.md).
 - Android: offline app that pairs with the web app, pulls the trip and pushes check-offs and delays. See [android/README.md](android/README.md). Signed APKs are published under Releases.
-- Not built yet: ticket and PDF attachments, password reset.
+- Not built yet: password reset.
 
 ## Docs
 

@@ -60,6 +60,7 @@ Only `AUTH_SECRET` is required.
 | `POST /api/pair` | Trades a code for a trip-scoped token. Limited to 10 attempts per IP per 10 minutes |
 | `GET /api/trips/{id}/sync?since={rev}` | Rows changed after `rev`, plus ids of deleted rows. `since=0` sends everything |
 | `POST /api/trips/{id}/sync/push` | The phone's batch of check-offs, status changes and time shifts |
+| `GET /api/trips/{id}/attachments/{file}` | One attached file, for the phone's token or the signed-in owner |
 
 How edits from both sides meet:
 
@@ -70,6 +71,28 @@ How edits from both sides meet:
 
 The release build of the Android app refuses plain `http`, so pair against an `https` deployment. A debug build can pair with a dev server on the same network.
 
+## Tickets and vouchers
+
+Select a block and use "Attach file" in the side panel. PDF, PNG, JPEG and WebP files up to 4 MB each are stored in the database, at most 10 per block. The type is read from the file's bytes, not its name. A paired phone downloads them on its next pull and opens them offline. Deleting a block deletes its files.
+
+An upload link (`/upload/{token}`) lets someone attach files to one block without signing in. It works for 24 hours. The connector creates these.
+
+## Connector (MCP)
+
+"Connector" in the top bar creates a secret URL of the form `/api/mcp/tpk_…`. Add it as a custom connector (remote MCP server URL, no authentication) in a chat app that supports MCP. The URL is the credential, so treat it like a password. It is shown once, only its hash is stored, and it can be revoked from the same dialog.
+
+| Tool | What it does |
+| --- | --- |
+| `get_trip` | Dates, currencies and every block by day, with ids, booking details and attached files |
+| `set_trip` | Creates the trip or changes title, destination, dates, timezone and currencies. Bookings keep their calendar dates when the range moves |
+| `add_booking` | Adds a flight, train, hotel check-in or check-out, tour or restaurant booking at a local date and time, with reference, notes, cost and an optional place lookup for the map pin |
+| `update_block` | Changes or moves a block, or takes it off the timeline |
+| `remove_block` | Deletes a block and its files |
+| `create_upload_link` | Returns a 24-hour upload link for one block, for ticket files the chat app cannot send itself |
+| `remove_file` | Deletes one attached file |
+
+The board picks up connector changes on its 20-second refresh or when the tab regains focus. Set `PUBLIC_URL` if the links the connector hands out should use a different domain than the one it was called on.
+
 ## Deploying
 
 Any Node host works. Set `AUTH_SECRET`, `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`. On a host with a read-only or temporary disk, such as Vercel, Turso is required because the local file would not persist. Migrations in `drizzle/` run on first start.
@@ -78,7 +101,6 @@ After changing `src/db/schema.ts`, run `npm run db:generate` and commit the new 
 
 ## Not built yet
 
-- Attachments (tickets and PDFs). The sync answer always has an empty `attachments` list.
 - Password reset and email verification.
 - YouTube transcripts, opening hours lookup.
 
@@ -90,7 +112,7 @@ src/store/        trip document store (undo, persistence) and view state
 src/db/           Drizzle schema and database client
 src/auth.ts       Auth.js setup
 src/server/       server actions and the trip, sync and session logic behind them
-src/app/api/      Auth.js handler and the three phone sync endpoints
+src/app/api/      Auth.js handler, phone sync, attachments, upload links and the MCP endpoint
 src/components/   workspace UI, sign-in forms, admin table
 drizzle/          SQL migrations
 ```

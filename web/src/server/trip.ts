@@ -1,6 +1,9 @@
 "use server";
 
+import { headers } from "next/headers";
 import type { TripDoc } from "@/lib/types";
+import { deleteAttachment, listAttachments, tripIdOf, type AttachmentMeta } from "./lib/attachments";
+import { createConnectorKey, listConnectorKeys, revokeConnectorKey, type ConnectorKeyInfo } from "./lib/connector-keys";
 import { requireUser } from "./lib/session";
 import { loadTrip, saveTrip, TripDocSchema, tripRev, type SaveResult } from "./lib/trip-repo";
 import { createPairingCode, listDevices, revokeDevice } from "./lib/sync-core";
@@ -44,4 +47,40 @@ export async function revokeDeviceAction(deviceId: string): Promise<PairedDevice
   const user = await requireUser();
   await revokeDevice(user.id, String(deviceId));
   return listDevices(user.id);
+}
+
+export async function listAttachmentsAction(): Promise<AttachmentMeta[]> {
+  const user = await requireUser();
+  const tripId = await tripIdOf(user.id);
+  return tripId ? listAttachments(tripId) : [];
+}
+
+export async function deleteAttachmentAction(attachmentId: string): Promise<AttachmentMeta[]> {
+  const user = await requireUser();
+  const tripId = await tripIdOf(user.id);
+  if (!tripId) return [];
+  await deleteAttachment(tripId, String(attachmentId));
+  return listAttachments(tripId);
+}
+
+export async function listConnectorKeysAction(): Promise<ConnectorKeyInfo[]> {
+  const user = await requireUser();
+  return listConnectorKeys(user.id);
+}
+
+/** Returns the secret connector URL once, with the updated list. */
+export async function createConnectorKeyAction(name: string): Promise<{ url: string; keys: ConnectorKeyInfo[] }> {
+  const user = await requireUser();
+  const { key } = await createConnectorKey(user.id, String(name ?? ""));
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  const proto = h.get("x-forwarded-proto") ?? (host?.startsWith("localhost") || host?.startsWith("127.") ? "http" : "https");
+  const origin = process.env.PUBLIC_URL?.replace(/\/+$/, "") || `${proto}://${host}`;
+  return { url: `${origin}/api/mcp/${key}`, keys: await listConnectorKeys(user.id) };
+}
+
+export async function revokeConnectorKeyAction(id: string): Promise<ConnectorKeyInfo[]> {
+  const user = await requireUser();
+  await revokeConnectorKey(user.id, String(id));
+  return listConnectorKeys(user.id);
 }

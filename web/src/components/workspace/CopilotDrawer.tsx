@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useShallow } from "zustand/react/shallow";
+import { BlockFiles } from "@/components/attachments/BlockFiles";
 import { checkDay } from "@/lib/sanity";
 import { hhmm } from "@/lib/time";
 import type { BlockDraft, BlockType, ItemDraft, PlaceHit } from "@/lib/types";
@@ -316,6 +317,7 @@ function Inspector({ id }: { id: string }) {
         {block.lat !== null ? `Pin ${block.lat.toFixed(4)}, ${block.lng!.toFixed(4)}.` : "No pin."}{" "}
         {linked.length > 0 && `Linked: ${linked.join(", ")}.`}
       </p>
+      <BlockFiles blockId={id} />
       <div className="flex gap-2">
         {block.dayId && <Button onClick={() => useTripStore.getState().unscheduleBlock(id)}>Unschedule</Button>}
         <Button

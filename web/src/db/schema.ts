@@ -1,4 +1,4 @@
-import { index, integer, primaryKey, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { blob, index, integer, primaryKey, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const users = sqliteTable("users", {
   id: text("id").primaryKey(),
@@ -103,7 +103,25 @@ export const contextualItems = sqliteTable(
   (t) => [primaryKey({ columns: [t.tripId, t.id] }), index("contextual_items_rev").on(t.tripId, t.rev)],
 );
 
-export const ENTITY = { day: "trip_day", block: "timeline_block", item: "contextual_item" } as const;
+// A ticket, voucher or booking confirmation attached to a block. The phone downloads it during a pull.
+export const attachments = sqliteTable(
+  "attachments",
+  {
+    tripId: tripId(),
+    id: text("id").notNull(),
+    blockId: text("block_id").notNull(),
+    fileName: text("file_name").notNull(),
+    mimeType: text("mime_type").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    sha256: text("sha256").notNull(),
+    data: blob("data", { mode: "buffer" }).notNull(),
+    rev: integer("rev").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.tripId, t.id] }), index("attachments_rev").on(t.tripId, t.rev), index("attachments_block").on(t.tripId, t.blockId)],
+);
+
+export const ENTITY = { day: "trip_day", block: "timeline_block", item: "contextual_item", attachment: "attachment" } as const;
 export type EntityName = (typeof ENTITY)[keyof typeof ENTITY];
 
 // A deleted row leaves its id here so a phone that still holds it learns to drop it.
@@ -165,4 +183,28 @@ export const appliedMutations = sqliteTable(
     appliedAt: integer("applied_at").notNull(),
   },
   (t) => [primaryKey({ columns: [t.tripId, t.mutationId] })],
+);
+
+// A link that lets someone upload files to one block without signing in. Only the hash is stored.
+export const uploadLinks = sqliteTable("upload_links", {
+  tokenHash: text("token_hash").primaryKey(),
+  tripId: tripId(),
+  blockId: text("block_id").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+  createdAt: integer("created_at").notNull(),
+});
+
+// Secret MCP connector URLs, each able to read and edit one user's trip. Only the hash is stored.
+export const connectorKeys = sqliteTable(
+  "connector_keys",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    keyHash: text("key_hash").notNull().unique(),
+    createdAt: integer("created_at").notNull(),
+    lastUsedAt: integer("last_used_at"),
+    revokedAt: integer("revoked_at"),
+  },
+  (t) => [index("connector_keys_user").on(t.userId)],
 );
