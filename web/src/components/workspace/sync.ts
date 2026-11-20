@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { create } from "zustand";
+import { refreshAttachments } from "@/components/attachments/store";
 import { relink } from "@/lib/linker";
 import { sampleDoc } from "@/lib/sample";
 import type { TripDoc } from "@/lib/types";
@@ -79,6 +80,7 @@ export function useTripSync(userId: string): boolean {
         if (disposed || dirty || saving || !remote) return;
         rev = remote.rev;
         applyRemote(remote.doc);
+        void refreshAttachments();
       } catch {
         // The next poll tries again.
       }
@@ -96,6 +98,7 @@ export function useTripSync(userId: string): boolean {
       if (remote) {
         rev = remote.rev;
         applyRemote(remote.doc);
+        void refreshAttachments();
       } else {
         // A trip left in this browser by another account is not uploaded into this one.
         let owner: string | null = null;

@@ -5,7 +5,7 @@ import { z } from "zod";
 import { getDb, schema } from "@/db/client";
 import { ENTITY } from "@/db/schema";
 
-const { trips, tripDays, timelineBlocks, contextualItems, tombstones, devices, pairingCodes, pairAttempts, appliedMutations, users } = schema;
+const { trips, tripDays, timelineBlocks, contextualItems, attachments, tombstones, devices, pairingCodes, pairAttempts, appliedMutations, users } = schema;
 
 export const CODE_TTL_MS = 10 * 60_000;
 const ATTEMPT_WINDOW_MS = 10 * 60_000;
@@ -121,10 +121,21 @@ export async function pull(tripId: string, since: number) {
   const full = since <= 0 || since > trip.rev;
   const after = full ? -1 : since;
 
-  const [days, blocks, items, tombs] = await Promise.all([
+  const [days, blocks, items, files, tombs] = await Promise.all([
     db.select().from(tripDays).where(and(eq(tripDays.tripId, tripId), gt(tripDays.rev, after))),
     db.select().from(timelineBlocks).where(and(eq(timelineBlocks.tripId, tripId), gt(timelineBlocks.rev, after))),
     db.select().from(contextualItems).where(and(eq(contextualItems.tripId, tripId), gt(contextualItems.rev, after))),
+    db
+      .select({
+        id: attachments.id,
+        blockId: attachments.blockId,
+        fileName: attachments.fileName,
+        mimeType: attachments.mimeType,
+        sizeBytes: attachments.sizeBytes,
+        sha256: attachments.sha256,
+      })
+      .from(attachments)
+      .where(and(eq(attachments.tripId, tripId), gt(attachments.rev, after))),
     full ? [] : db.select().from(tombstones).where(and(eq(tombstones.tripId, tripId), gt(tombstones.rev, after))),
   ]);
   const deleted = (entity: string) => tombs.filter((t) => t.entity === entity).map((t) => t.entityId);
@@ -203,12 +214,20 @@ export async function pull(tripId: string, since: number) {
       is_checked: i.isChecked,
       updated_at: i.updatedAt,
     })),
-    attachments: [],
+    attachments: files.map((f) => ({
+      id: f.id,
+      block_id: f.blockId,
+      file_name: f.fileName,
+      mime_type: f.mimeType,
+      size_bytes: f.sizeBytes,
+      sha256: f.sha256,
+      download_path: `/api/trips/${encodeURIComponent(tripId)}/attachments/${encodeURIComponent(f.id)}`,
+    })),
     deleted: {
       trip_days: deleted(ENTITY.day),
       timeline_blocks: deleted(ENTITY.block),
       contextual_items: deleted(ENTITY.item),
-      attachments: [],
+      attachments: deleted(ENTITY.attachment),
     },
   };
 }

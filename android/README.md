@@ -54,7 +54,7 @@ A release fails if the keystore secret is missing, so a published APK is always 
 
 ## Try it without a server
 
-The sync endpoints (`/api/pair`, `/api/trips/{id}/sync`, `/api/trips/{id}/sync/push`) are not built yet. On the pairing screen choose **Try the demo trip** to load a three-day sample that starts today. Check-offs and delays work locally and queue in the outbox.
+On the pairing screen choose **Try the demo trip** to load a three-day sample that starts today. Check-offs and delays work locally and queue in the outbox.
 
 ## Settings
 

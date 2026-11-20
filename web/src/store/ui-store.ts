@@ -11,6 +11,7 @@ interface UiState {
   paletteOpen: boolean;
   tripDialogOpen: boolean;
   phoneDialogOpen: boolean;
+  connectorDialogOpen: boolean;
   dragging: DragData | null;
   dropPreview: { dayId: string; minute: number } | null;
   set(patch: Partial<Omit<UiState, "set">>): void;
@@ -25,6 +26,7 @@ export const useUiStore = create<UiState>((set) => ({
   paletteOpen: false,
   tripDialogOpen: false,
   phoneDialogOpen: false,
+  connectorDialogOpen: false,
   dragging: null,
   dropPreview: null,
   set: (patch) => set(patch),

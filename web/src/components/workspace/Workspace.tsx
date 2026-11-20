@@ -25,6 +25,7 @@ import { OverlayCard } from "./cards";
 import { layeredCollision } from "./collision";
 import { CommandPalette } from "./CommandPalette";
 import { CopilotDrawer } from "./CopilotDrawer";
+import { ConnectorDialog } from "./ConnectorDialog";
 import { PhoneDialog } from "./PhoneDialog";
 import { StagingCart } from "./StagingCart";
 import { useSyncStore, useTripSync } from "./sync";
@@ -107,7 +108,7 @@ function onKeyDown(e: KeyboardEvent) {
     return ui.set({ paletteOpen: !ui.paletteOpen });
   }
   const target = e.target as HTMLElement | null;
-  if (target?.closest("input, textarea, select, [contenteditable=true]") || ui.paletteOpen || ui.tripDialogOpen || ui.phoneDialogOpen) return;
+  if (target?.closest("input, textarea, select, [contenteditable=true]") || ui.paletteOpen || ui.tripDialogOpen || ui.phoneDialogOpen || ui.connectorDialogOpen) return;
 
   if (mod && key === "z") {
     e.preventDefault();
@@ -186,6 +187,7 @@ function TopBar({ user }: { user: WorkspaceUser }) {
           Commands <Kbd>⌘K</Kbd>
         </Button>
         <Button onClick={() => useUiStore.getState().set({ phoneDialogOpen: true })}>Phone</Button>
+        <Button onClick={() => useUiStore.getState().set({ connectorDialogOpen: true })}>Connector</Button>
         {user.role === "ADMIN" && (
           <Link href="/admin" className="text-xs text-neutral-400 hover:text-amber-300">
             Admin
@@ -238,6 +240,7 @@ export default function Workspace({ user }: { user: WorkspaceUser }) {
       <CommandPalette />
       <TripDialog />
       <PhoneDialog />
+      <ConnectorDialog />
     </div>
   );
 }

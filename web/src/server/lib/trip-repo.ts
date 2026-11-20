@@ -5,7 +5,7 @@ import { getDb, schema, type Db } from "@/db/client";
 import { ENTITY, type EntityName } from "@/db/schema";
 import type { Block, Day, Item, TripDoc } from "@/lib/types";
 
-const { trips, tripDays, timelineBlocks, contextualItems, tombstones } = schema;
+const { trips, tripDays, timelineBlocks, contextualItems, tombstones, attachments } = schema;
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 type DayRow = typeof tripDays.$inferSelect;
@@ -283,6 +283,12 @@ export async function saveTrip(userId: string, doc: TripDoc, baseRev: number | n
       if (stale && old.rev > base) continue;
       await tx.delete(timelineBlocks).where(and(eq(timelineBlocks.tripId, tripId), eq(timelineBlocks.id, old.id)));
       await bury(ENTITY.block, old.id);
+      // A deleted block takes its tickets with it, and phones are told to drop them.
+      const files = await tx
+        .delete(attachments)
+        .where(and(eq(attachments.tripId, tripId), eq(attachments.blockId, old.id)))
+        .returning({ id: attachments.id });
+      for (const file of files) await bury(ENTITY.attachment, file.id);
       changed = true;
     }
 
