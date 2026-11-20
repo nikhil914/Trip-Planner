@@ -122,7 +122,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         e is HttpStatusException && e.code == 404 -> "That pairing code is not valid."
         e is HttpStatusException && e.code == 410 -> "That pairing code has expired. Create a new one on the web."
         e is HttpStatusException && e.code == 429 -> "Too many attempts. Wait a few minutes."
-        e is HttpStatusException && e.code == 401 -> "This phone was unpaired on the web. Pair again in Settings."
+        e is HttpStatusException && e.tokenRejected -> "This phone was unpaired on the web. Pair again in Settings."
+        e is HttpStatusException && (e.code == 401 || e.code == 403) && e.error == null ->
+            "The server's host blocked the request (${e.code}). If it runs on Vercel, turn off Deployment Protection."
         e is HttpStatusException -> "The server answered with an error (${e.code})."
         e is IOException -> "Could not reach the server. Your trip is still available offline."
         else -> "Something went wrong: ${e.message ?: e.javaClass.simpleName}"
@@ -183,7 +185,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 try {
                     repo.pull()
                 } catch (e: Exception) {
-                    if (e is HttpStatusException && e.code == 401) {
+                    if (e is HttpStatusException && e.tokenRejected) {
                         graph.session.markRevoked()
                         say(describe(e))
                     }
@@ -204,7 +206,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val failed = repo.pull()
                 say(if (failed > 0) "Synced, but $failed ${if (failed == 1) "ticket" else "tickets"} could not be downloaded." else "Up to date.")
             } catch (e: Exception) {
-                if (e is HttpStatusException && e.code == 401) graph.session.markRevoked()
+                if (e is HttpStatusException && e.tokenRejected) graph.session.markRevoked()
                 say(describe(e))
             } finally {
                 refreshing.value = false

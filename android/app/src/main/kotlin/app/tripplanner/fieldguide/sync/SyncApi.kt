@@ -12,7 +12,17 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
-class HttpStatusException(val code: Int, val error: String?) : IOException("HTTP $code${error?.let { " $it" } ?: ""}")
+class HttpStatusException(val code: Int, val error: String?) : IOException("HTTP $code${error?.let { " $it" } ?: ""}") {
+    /**
+     * True only when our server says the token is no longer valid. A 401 from something in front of it,
+     * such as a hosting provider's login wall, carries no such code and must not unpair the phone.
+     */
+    val tokenRejected: Boolean get() = code == 401 && error in TOKEN_ERRORS
+
+    private companion object {
+        val TOKEN_ERRORS = setOf("token_revoked", "token_expired", "token_missing")
+    }
+}
 
 class NotPairedException : IOException("This phone is not paired with a server")
 

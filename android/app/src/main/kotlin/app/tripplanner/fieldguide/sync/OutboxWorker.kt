@@ -58,10 +58,11 @@ class OutboxWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                 graph.api.push(tripId, PushRequest(batchId, mutations))
             } catch (e: HttpStatusException) {
                 return when {
-                    e.code == 401 -> {
+                    e.tokenRejected -> {
                         graph.session.markRevoked()
                         Result.failure()
                     }
+                    (e.code == 401 || e.code == 403) && e.error == null -> Result.retry()
                     e.code == 429 || e.code >= 500 -> Result.retry()
                     else -> {
                         // The server rejected the batch itself. Drop it so it cannot block later edits.
