@@ -23,6 +23,7 @@ Only `AUTH_SECRET` is required.
 | `AUTH_SECRET` | Signing session cookies. Any long random string |
 | `ADMIN_EMAIL` | Optional. This email may sign up as admin without an invite while the site has no admin. Without it, the first account is |
 | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | A hosted Turso database. Without them, a local SQLite file |
+| `DATA_ENCRYPTION_KEY` | Encrypts personal data in the database. 32 random bytes in base64 (`openssl rand -base64 32`). Back it up: without it the encrypted data cannot be read |
 | `OPENROUTER_API_KEY` | Co-Pilot suggestions and blog extraction |
 | `OPENROUTER_MODEL_PRIMARY` | Model slug for gap filling, in `vendor/model` form |
 | `OPENROUTER_MODEL_SECONDARY` | Optional cheaper slug for blog extraction |
@@ -49,6 +50,7 @@ Only `AUTH_SECRET` is required.
 
 - `/signup` and `/login` use Auth.js with email and password. Passwords are stored as scrypt hashes.
 - Each account has one trip. The board saves it about a second after every edit and shows "Saved" in the top bar.
+- **Field encryption** (`src/db/field-crypto.ts`): with `DATA_ENCRYPTION_KEY` set, personal fields are encrypted with AES-256-GCM before they reach the database: names and emails, trip title and destination, block and item titles, notes, booking refs, venue names, local names, map coordinates and place ids, device and connector names, invite notes, and attachment file names and contents. Ids, dates, times, timezones, currencies and costs stay plain so the app can sort and sync. Email uses deterministic encryption so sign-in can look it up. At startup, rows still in plain text are encrypted in place. Changing or losing the key makes the data unreadable; there is no rotation yet.
 - `/admin` is for admins only: it lists accounts, changes roles, and disables an account. Disabling signs the user out and stops their phones from syncing.
 - Sign-up is closed. Only the first account, or someone holding an invite link, can create an account. An admin creates invite links on `/admin`. Each link works once and expires after 7 days. Only its hash is stored.
 - After 10 wrong passwords from one IP address within 15 minutes, sign-in from that address is refused for 15 minutes. Other addresses are not affected.
