@@ -2,6 +2,8 @@
 
 import { and, count, eq, isNull, ne } from "drizzle-orm";
 import { getDb, schema } from "@/db/client";
+import { createInvite, INVITE_TTL_MS, listInvites, revokeInvite, type InviteInfo } from "./lib/invites";
+import { publicOrigin } from "./lib/origin";
 import { requireAdmin } from "./lib/session";
 
 const { users, trips, devices } = schema;
@@ -69,4 +71,22 @@ export async function setUserDisabledAction(userId: string, disabled: boolean): 
   const db = await getDb();
   await db.update(users).set({ disabled: Boolean(disabled) }).where(eq(users.id, String(userId)));
   return listUsersAction();
+}
+
+export async function listInvitesAction(): Promise<InviteInfo[]> {
+  await requireAdmin();
+  return listInvites();
+}
+
+/** Returns the invite link once, with the updated list. The link works for one sign-up within 7 days. */
+export async function createInviteAction(note: string, role: "ADMIN" | "USER"): Promise<{ url: string; days: number; invites: InviteInfo[] }> {
+  const admin = await requireAdmin();
+  const token = await createInvite(admin.id, String(note ?? ""), role === "ADMIN" ? "ADMIN" : "USER");
+  return { url: `${await publicOrigin()}/signup?invite=${token}`, days: INVITE_TTL_MS / 86_400_000, invites: await listInvites() };
+}
+
+export async function revokeInviteAction(id: string): Promise<InviteInfo[]> {
+  await requireAdmin();
+  await revokeInvite(String(id));
+  return listInvites();
 }

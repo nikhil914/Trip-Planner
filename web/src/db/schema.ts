@@ -208,3 +208,26 @@ export const connectorKeys = sqliteTable(
   },
   (t) => [index("connector_keys_user").on(t.userId)],
 );
+
+// Sign-up is by invitation. An admin creates a link; it works once, until it expires. Only the hash is stored.
+export const invites = sqliteTable("invites", {
+  tokenHash: text("token_hash").primaryKey(),
+  createdBy: text("created_by").notNull().references(() => users.id, { onDelete: "cascade" }),
+  note: text("note").notNull(),
+  role: text("role", { enum: ["ADMIN", "USER"] }).notNull().default("USER"),
+  createdAt: integer("created_at").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+  usedAt: integer("used_at"),
+  usedBy: text("used_by").references(() => users.id, { onDelete: "set null" }),
+});
+
+// Failed sign-ins, counted per IP address to slow down password guessing.
+export const loginFailures = sqliteTable(
+  "login_failures",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    key: text("key").notNull(),
+    at: integer("at").notNull(),
+  },
+  (t) => [index("login_failures_key").on(t.key, t.at)],
+);

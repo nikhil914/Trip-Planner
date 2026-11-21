@@ -10,7 +10,7 @@ cp .env.example .env.local   # then set AUTH_SECRET
 npm run dev
 ```
 
-Open http://localhost:3000 and create an account. The first account is the admin. A sample Tbilisi trip loads for a new account.
+Open http://localhost:3000 and create an account. The first account is the admin. After that, sign-up needs an invite link from `/admin`. A sample Tbilisi trip loads for a new account.
 
 With no database settings the app keeps its data in `local.db`, a SQLite file next to `package.json`. Tables are created on first start.
 
@@ -21,7 +21,7 @@ Only `AUTH_SECRET` is required.
 | Variable | Needed for |
 | --- | --- |
 | `AUTH_SECRET` | Signing session cookies. Any long random string |
-| `ADMIN_EMAIL` | Optional. The account with this email is the admin. Without it, the first account is |
+| `ADMIN_EMAIL` | Optional. This email may sign up as admin without an invite while the site has no admin. Without it, the first account is |
 | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | A hosted Turso database. Without them, a local SQLite file |
 | `OPENROUTER_API_KEY` | Co-Pilot suggestions and blog extraction |
 | `OPENROUTER_MODEL_PRIMARY` | Model slug for gap filling, in `vendor/model` form |
@@ -50,6 +50,9 @@ Only `AUTH_SECRET` is required.
 - `/signup` and `/login` use Auth.js with email and password. Passwords are stored as scrypt hashes.
 - Each account has one trip. The board saves it about a second after every edit and shows "Saved" in the top bar.
 - `/admin` is for admins only: it lists accounts, changes roles, and disables an account. Disabling signs the user out and stops their phones from syncing.
+- Sign-up is closed. Only the first account, or someone holding an invite link, can create an account. An admin creates invite links on `/admin`. Each link works once and expires after 7 days. Only its hash is stored.
+- After 10 wrong passwords from one IP address within 15 minutes, sign-in from that address is refused for 15 minutes. Other addresses are not affected.
+- Every response carries `X-Robots-Tag: noindex`, `Referrer-Policy: no-referrer` (so upload links never leak in the Referer), `X-Frame-Options: DENY`, `nosniff` and HSTS. `robots.txt` disallows everything.
 
 ## Phone sync
 
