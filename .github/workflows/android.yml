@@ -73,7 +73,7 @@ jobs:
           echo "### Release APK: $(awk "BEGIN { printf \"%.2f\", $bytes / 1048576 }") MB" >> "$GITHUB_STEP_SUMMARY"
           echo "Signed with the ${{ steps.signing.outputs.signed }}." >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: field-guide-release-apk
           path: android/app/build/outputs/apk/release/*.apk
