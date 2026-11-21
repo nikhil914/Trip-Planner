@@ -26,6 +26,7 @@ Only `AUTH_SECRET` is required.
 | `DATA_ENCRYPTION_KEY` | Encrypts personal data in the database. 32 random bytes in base64 (`openssl rand -base64 32`). Back it up: without it the encrypted data cannot be read |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Optional security alerts to Telegram: sign-ins, blocked sign-ins, new accounts, phones, connector links, invites, 2FA changes. The message carries the event and IP only |
 | `RETENTION_DAYS` | Days after a trip ends before its ticket files and booking refs are deleted. Default 30. `0` turns it off |
+| `ALLOWED_IPS` | Optional VPN gate. Comma-separated IPs or IPv4 CIDR ranges. When set, every other address gets a plain 404, except the MCP connector at `/api/mcp/*`. Unset means the gate is off |
 | `OPENROUTER_API_KEY` | Co-Pilot suggestions and blog extraction |
 | `OPENROUTER_MODEL_PRIMARY` | Model slug for gap filling, in `vendor/model` form |
 | `OPENROUTER_MODEL_SECONDARY` | Optional cheaper slug for blog extraction |
@@ -59,6 +60,7 @@ Only `AUTH_SECRET` is required.
 - **Token lifetimes**: upload links work for 1 hour. Connector links expire after 90 days (older links count from their creation) and allow 300 calls per 10 minutes.
 - **Retention**: at startup, trips that ended more than `RETENTION_DAYS` ago lose their ticket files and booking refs. Phones drop them on their next pull.
 - **CSP**: everything loads from this site only; the page cannot be framed.
+- **VPN gate** (`src/proxy.ts`): with `ALLOWED_IPS` set, only those addresses reach pages, sign-in, phone sync and upload links. On Vercel the client IP comes from `x-real-ip`, which the platform sets. `/api/mcp/*` stays reachable because the assistant calls it from its own servers, and its secret URL is the credential. If the VPN server goes down, add your current IP to `ALLOWED_IPS` (or clear it) and redeploy.
 - `/admin` is for admins only: it lists accounts, changes roles, and disables an account. Disabling signs the user out and stops their phones from syncing.
 - Sign-up is closed. Only the first account, or someone holding an invite link, can create an account. An admin creates invite links on `/admin`. Each link works once and expires after 7 days. Only its hash is stored.
 - After 10 wrong passwords from one IP address within 15 minutes, sign-in from that address is refused for 15 minutes. Other addresses are not affected.
