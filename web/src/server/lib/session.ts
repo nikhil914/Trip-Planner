@@ -21,6 +21,8 @@ export async function currentUser(): Promise<SessionUser | null> {
   const db = await getDb();
   const user = await db.query.users.findFirst({ where: eq(schema.users.id, id) });
   if (!user || user.disabled) return null;
+  // "Sign out everywhere" raised the version, so a cookie issued before it no longer counts.
+  if (((session as { sv?: number }).sv ?? 0) !== user.sessionVersion) return null;
   return { id: user.id, email: user.email, name: user.name, role: user.role };
 }
 

@@ -3,6 +3,7 @@
 import type { TripDoc } from "@/lib/types";
 import { deleteAttachment, listAttachments, tripIdOf, type AttachmentMeta } from "./lib/attachments";
 import { createConnectorKey, listConnectorKeys, revokeConnectorKey, type ConnectorKeyInfo } from "./lib/connector-keys";
+import { audit } from "./lib/audit";
 import { publicOrigin } from "./lib/origin";
 import { requireUser } from "./lib/session";
 import { loadTrip, saveTrip, TripDocSchema, tripRev, type SaveResult } from "./lib/trip-repo";
@@ -72,11 +73,13 @@ export async function listConnectorKeysAction(): Promise<ConnectorKeyInfo[]> {
 export async function createConnectorKeyAction(name: string): Promise<{ url: string; keys: ConnectorKeyInfo[] }> {
   const user = await requireUser();
   const { key } = await createConnectorKey(user.id, String(name ?? ""));
+  await audit("connector_created", user.id, { detail: String(name ?? "").slice(0, 60) || null });
   return { url: `${await publicOrigin()}/api/mcp/${key}`, keys: await listConnectorKeys(user.id) };
 }
 
 export async function revokeConnectorKeyAction(id: string): Promise<ConnectorKeyInfo[]> {
   const user = await requireUser();
   await revokeConnectorKey(user.id, String(id));
+  await audit("connector_revoked", user.id);
   return listConnectorKeys(user.id);
 }

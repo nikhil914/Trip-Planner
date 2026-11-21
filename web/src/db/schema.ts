@@ -11,6 +11,13 @@ export const users = sqliteTable("users", {
   role: text("role", { enum: ["ADMIN", "USER"] }).notNull().default("USER"),
   disabled: integer("disabled", { mode: "boolean" }).notNull().default(false),
   createdAt: integer("created_at").notNull(),
+  // Raising this signs the user out on every browser: a session cookie carries the value it was issued with.
+  sessionVersion: integer("session_version").notNull().default(0),
+  // Two-factor sign-in with an authenticator app. The secret is set first and counts once totp_enabled_at is set.
+  totpSecret: encText("totp_secret"),
+  totpEnabledAt: integer("totp_enabled_at"),
+  // The last 30-second step a code was accepted for, so a code cannot be used twice.
+  totpLastStep: integer("totp_last_step"),
 });
 
 // One active trip per user. `rev` is the sync cursor: every write stamps the new value on the rows it changed.
@@ -208,6 +215,8 @@ export const connectorKeys = sqliteTable(
     createdAt: integer("created_at").notNull(),
     lastUsedAt: integer("last_used_at"),
     revokedAt: integer("revoked_at"),
+    // Links stop working after this time. Null on links made before expiry existed: they expire 90 days after creation.
+    expiresAt: integer("expires_at"),
   },
   (t) => [index("connector_keys_user").on(t.userId)],
 );
@@ -224,7 +233,7 @@ export const invites = sqliteTable("invites", {
   usedBy: text("used_by").references(() => users.id, { onDelete: "set null" }),
 });
 
-// Failed sign-ins, counted per IP address to slow down password guessing.
+// Rate-limit events. Keys: "ip:<address>" for failed sign-ins, "mcp:<connector key id>" for connector calls.
 export const loginFailures = sqliteTable(
   "login_failures",
   {
@@ -233,4 +242,18 @@ export const loginFailures = sqliteTable(
     at: integer("at").notNull(),
   },
   (t) => [index("login_failures_key").on(t.key, t.at)],
+);
+
+// Security events: sign-ins, blocked attempts, new phones, new connector links, 2FA changes. Shown on /security and /admin.
+export const auditEvents = sqliteTable(
+  "audit_events",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    detail: encText("detail"),
+    ip: encText("ip"),
+    at: integer("at").notNull(),
+  },
+  (t) => [index("audit_events_user").on(t.userId, t.at), index("audit_events_at").on(t.at)],
 );

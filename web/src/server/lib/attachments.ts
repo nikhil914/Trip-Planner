@@ -9,7 +9,7 @@ const { trips, timelineBlocks, attachments, tombstones, uploadLinks } = schema;
 /** Vercel rejects request bodies over 4.5 MB, so one file stays under that with room for the form fields. */
 export const MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024;
 export const MAX_ATTACHMENTS_PER_BLOCK = 10;
-export const UPLOAD_LINK_TTL_MS = 24 * 60 * 60_000;
+export const UPLOAD_LINK_TTL_MS = 60 * 60_000;
 
 const sha256 = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex");
 

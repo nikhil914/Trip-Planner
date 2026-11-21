@@ -94,7 +94,8 @@ export async function redeemPairingCode(body: unknown, ip: string) {
       tokenHash: sha256(token),
       createdAt: now,
     });
-    return { trip_id: row.tripId, device_id: deviceId, sync_token: token, server_time: now };
+    // user_id is for the audit log only; the pair route strips it from the reply.
+    return { trip_id: row.tripId, device_id: deviceId, sync_token: token, server_time: now, user_id: row.userId };
   });
 }
 
