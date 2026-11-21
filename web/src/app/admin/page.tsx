@@ -1,7 +1,8 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
+import { AdminInvites } from "@/components/account/AdminInvites";
 import { AdminUsers } from "@/components/account/AdminUsers";
-import { listUsersAction } from "@/server/admin";
+import { listInvitesAction, listUsersAction } from "@/server/admin";
 import { currentUser } from "@/server/lib/session";
 
 export const metadata = { title: "Admin · Trip Planner" };
@@ -10,7 +11,13 @@ async function Users() {
   const user = await currentUser();
   if (!user) redirect("/login");
   if (user.role !== "ADMIN") redirect("/");
-  return <AdminUsers initial={await listUsersAction()} selfId={user.id} />;
+  const [users, invites] = await Promise.all([listUsersAction(), listInvitesAction()]);
+  return (
+    <div className="space-y-8">
+      <AdminUsers initial={users} selfId={user.id} />
+      <AdminInvites initial={invites} />
+    </div>
+  );
 }
 
 export default function AdminPage() {

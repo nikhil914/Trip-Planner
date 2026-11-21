@@ -15,6 +15,13 @@
       "when": 1795186035647,
       "tag": "0001_attachments_connector",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1795298396522,
+      "tag": "0002_invites_login_limits",
+      "breakpoints": true
     }
   ]
 }

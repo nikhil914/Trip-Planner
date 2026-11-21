@@ -1,10 +1,11 @@
 "use server";
 
-import { count, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { AuthError } from "next-auth";
 import { z } from "zod";
-import { signIn, signOut } from "@/auth";
+import { LoginLimitedError, signIn, signOut } from "@/auth";
 import { getDb, schema } from "@/db/client";
+import { claimInvite, finishInvite, openSignupRole, releaseInvite } from "./lib/invites";
 import { hashPassword } from "./lib/passwords";
 
 export interface FormState {
@@ -27,6 +28,9 @@ async function startSession(email: string, password: string): Promise<FormState>
   try {
     await signIn("credentials", { email, password, redirectTo: "/" });
   } catch (e) {
+    if (e instanceof LoginLimitedError || (e as { code?: string }).code === "rate_limited") {
+      return { error: "Too many attempts. Wait 15 minutes and try again.", email };
+    }
     if (e instanceof AuthError) return { error: "Wrong email or password.", email };
     throw e;
   }
@@ -44,23 +48,27 @@ export async function signUpAction(_prev: FormState, form: FormData): Promise<Fo
   const typed = { email: String(form.get("email") ?? ""), name: String(form.get("name") ?? "") };
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the form.", ...typed };
   const { name, email, password } = parsed.data;
+  const invite = String(form.get("invite") ?? "").trim();
 
   const db = await getDb();
   if (await db.query.users.findFirst({ where: eq(schema.users.email, email) })) {
     return { error: "An account with this email already exists.", ...typed };
   }
-  // ADMIN_EMAIL names the admin. Without it the first account to sign up is the admin.
-  const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
-  const [{ total }] = await db.select({ total: count() }).from(schema.users);
-  const role = adminEmail ? (email === adminEmail ? "ADMIN" : "USER") : total === 0 ? "ADMIN" : "USER";
-  await db.insert(schema.users).values({
-    id: "u-" + crypto.randomUUID(),
-    email,
-    name,
-    passwordHash: await hashPassword(password),
-    role,
-    createdAt: Date.now(),
-  });
+  // Sign-up is closed except for the first account, the ADMIN_EMAIL bootstrap, and holders of an invite link.
+  let role: "ADMIN" | "USER" | null = await openSignupRole(email);
+  const usingInvite = !role && Boolean(invite);
+  if (usingInvite) role = await claimInvite(invite);
+  if (!role) {
+    return { error: invite ? "This invite link has expired or was already used. Ask for a new one." : "Sign-up needs an invite link from the admin.", ...typed };
+  }
+  const id = "u-" + crypto.randomUUID();
+  try {
+    await db.insert(schema.users).values({ id, email, name, passwordHash: await hashPassword(password), role, createdAt: Date.now() });
+  } catch (e) {
+    if (usingInvite) await releaseInvite(invite);
+    throw e;
+  }
+  if (usingInvite) await finishInvite(invite, id);
   return startSession(email, password);
 }
 
