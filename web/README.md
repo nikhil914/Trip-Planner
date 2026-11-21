@@ -23,6 +23,7 @@ Only `AUTH_SECRET` is required.
 | `AUTH_SECRET` | Signing session cookies. Any long random string |
 | `ADMIN_EMAIL` | Optional. The account with this email is the admin. Without it, the first account is |
 | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | A hosted Turso database. Without them, a local SQLite file |
+| `ALLOWED_IPS` | Optional VPN gate. Comma-separated IPs or IPv4 CIDR ranges. When set, every other address gets a plain 404, except the MCP connector at `/api/mcp/*`. Unset means the gate is off |
 | `OPENROUTER_API_KEY` | Co-Pilot suggestions and blog extraction |
 | `OPENROUTER_MODEL_PRIMARY` | Model slug for gap filling, in `vendor/model` form |
 | `OPENROUTER_MODEL_SECONDARY` | Optional cheaper slug for blog extraction |
@@ -49,6 +50,7 @@ Only `AUTH_SECRET` is required.
 
 - `/signup` and `/login` use Auth.js with email and password. Passwords are stored as scrypt hashes.
 - Each account has one trip. The board saves it about a second after every edit and shows "Saved" in the top bar.
+- **VPN gate** (`src/proxy.ts`): with `ALLOWED_IPS` set, only those addresses reach pages, sign-in, phone sync and upload links. On Vercel the client IP comes from `x-real-ip`, which the platform sets. `/api/mcp/*` stays reachable because the assistant calls it from its own servers, and its secret URL is the credential. If the VPN server goes down, add your current IP to `ALLOWED_IPS` (or clear it) and redeploy.
 - `/admin` is for admins only: it lists accounts, changes roles, and disables an account. Disabling signs the user out and stops their phones from syncing.
 
 ## Phone sync
