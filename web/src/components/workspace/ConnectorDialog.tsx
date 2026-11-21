@@ -113,7 +113,7 @@ function Body({ onClose }: { onClose: () => void }) {
               <li key={k.id} className="flex items-center gap-2 py-1.5">
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm text-neutral-200">{k.name}</div>
-                  <div className="text-[11px] text-neutral-500">{used(k.lastUsedAt)}</div>
+                  <div className="text-[11px] text-neutral-500">{used(k.lastUsedAt)} · expires {new Date(k.expiresAt).toISOString().slice(0, 10)}</div>
                 </div>
                 <Button variant="danger" onClick={() => revoke(k.id)}>
                   Revoke

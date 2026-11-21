@@ -23,6 +23,9 @@ Only `AUTH_SECRET` is required.
 | `AUTH_SECRET` | Signing session cookies. Any long random string |
 | `ADMIN_EMAIL` | Optional. This email may sign up as admin without an invite while the site has no admin. Without it, the first account is |
 | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | A hosted Turso database. Without them, a local SQLite file |
+| `DATA_ENCRYPTION_KEY` | Encrypts personal data in the database. 32 random bytes in base64 (`openssl rand -base64 32`). Back it up: without it the encrypted data cannot be read |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Optional security alerts to Telegram: sign-ins, blocked sign-ins, new accounts, phones, connector links, invites, 2FA changes. The message carries the event and IP only |
+| `RETENTION_DAYS` | Days after a trip ends before its ticket files and booking refs are deleted. Default 30. `0` turns it off |
 | `ALLOWED_IPS` | Optional VPN gate. Comma-separated IPs or IPv4 CIDR ranges. When set, every other address gets a plain 404, except the MCP connector at `/api/mcp/*`. Unset means the gate is off |
 | `OPENROUTER_API_KEY` | Co-Pilot suggestions and blog extraction |
 | `OPENROUTER_MODEL_PRIMARY` | Model slug for gap filling, in `vendor/model` form |
@@ -50,6 +53,13 @@ Only `AUTH_SECRET` is required.
 
 - `/signup` and `/login` use Auth.js with email and password. Passwords are stored as scrypt hashes.
 - Each account has one trip. The board saves it about a second after every edit and shows "Saved" in the top bar.
+- **Field encryption** (`src/db/field-crypto.ts`): with `DATA_ENCRYPTION_KEY` set, personal fields are encrypted with AES-256-GCM before they reach the database: names and emails, trip title and destination, block and item titles, notes, booking refs, venue names, local names, map coordinates and place ids, device and connector names, invite notes, and attachment file names and contents. Ids, dates, times, timezones, currencies and costs stay plain so the app can sort and sync. Email uses deterministic encryption so sign-in can look it up. At startup, rows still in plain text are encrypted in place. Changing or losing the key makes the data unreadable; there is no rotation yet.
+- **Two-factor sign-in**: `/security` sets up a TOTP authenticator app (QR code or key). Sign-in then needs the 6-digit code; a code works once. Wrong codes count toward the per-IP limit.
+- **Sign out everywhere** on `/security` raises `users.session_version`; every session cookie issued before it stops working. Sessions last 7 days.
+- **Security log**: sign-ins, failed and blocked attempts, new accounts, paired phones, connector links, invites and 2FA changes go to `audit_events` (kept 180 days). `/security` shows your own, `/admin` shows everyone's.
+- **Token lifetimes**: upload links work for 1 hour. Connector links expire after 90 days (older links count from their creation) and allow 300 calls per 10 minutes.
+- **Retention**: at startup, trips that ended more than `RETENTION_DAYS` ago lose their ticket files and booking refs. Phones drop them on their next pull.
+- **CSP**: everything loads from this site only; the page cannot be framed.
 - **VPN gate** (`src/proxy.ts`): with `ALLOWED_IPS` set, only those addresses reach pages, sign-in, phone sync and upload links. On Vercel the client IP comes from `x-real-ip`, which the platform sets. `/api/mcp/*` stays reachable because the assistant calls it from its own servers, and its secret URL is the credential. If the VPN server goes down, add your current IP to `ALLOWED_IPS` (or clear it) and redeploy.
 - `/admin` is for admins only: it lists accounts, changes roles, and disables an account. Disabling signs the user out and stops their phones from syncing.
 - Sign-up is closed. Only the first account, or someone holding an invite link, can create an account. An admin creates invite links on `/admin`. Each link works once and expires after 7 days. Only its hash is stored.

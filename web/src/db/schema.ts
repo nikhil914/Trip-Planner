@@ -1,21 +1,31 @@
-import { blob, index, integer, primaryKey, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { encBlob, encLookupText, encReal, encText } from "./field-crypto";
+
+// Columns typed enc* are encrypted before they reach the database (see field-crypto.ts).
 
 export const users = sqliteTable("users", {
   id: text("id").primaryKey(),
-  email: text("email").notNull().unique(),
-  name: text("name").notNull(),
+  email: encLookupText("email").notNull().unique(),
+  name: encText("name").notNull(),
   passwordHash: text("password_hash").notNull(),
   role: text("role", { enum: ["ADMIN", "USER"] }).notNull().default("USER"),
   disabled: integer("disabled", { mode: "boolean" }).notNull().default(false),
   createdAt: integer("created_at").notNull(),
+  // Raising this signs the user out on every browser: a session cookie carries the value it was issued with.
+  sessionVersion: integer("session_version").notNull().default(0),
+  // Two-factor sign-in with an authenticator app. The secret is set first and counts once totp_enabled_at is set.
+  totpSecret: encText("totp_secret"),
+  totpEnabledAt: integer("totp_enabled_at"),
+  // The last 30-second step a code was accepted for, so a code cannot be used twice.
+  totpLastStep: integer("totp_last_step"),
 });
 
 // One active trip per user. `rev` is the sync cursor: every write stamps the new value on the rows it changed.
 export const trips = sqliteTable("trips", {
   id: text("id").primaryKey(),
   ownerId: text("owner_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
-  title: text("title").notNull(),
-  destinationLabel: text("destination_label").notNull(),
+  title: encText("title").notNull(),
+  destinationLabel: encText("destination_label").notNull(),
   destinationTimezone: text("destination_timezone").notNull(),
   homeCurrency: text("home_currency").notNull(),
   localCurrency: text("local_currency").notNull(),
@@ -55,18 +65,18 @@ export const timelineBlocks = sqliteTable(
     durationMinutes: integer("duration_minutes").notNull(),
     isFixedTime: integer("is_fixed_time", { mode: "boolean" }).notNull(),
     blockType: text("block_type", { enum: ["ACTIVITY", "TRANSIT", "HOTEL", "FOOD_STOP"] }).notNull(),
-    title: text("title").notNull(),
-    subtitleOrTip: text("subtitle_or_tip"),
-    lat: real("lat"),
-    lng: real("lng"),
-    googlePlaceId: text("google_place_id"),
-    googleMapsUri: text("google_maps_uri"),
+    title: encText("title").notNull(),
+    subtitleOrTip: encText("subtitle_or_tip"),
+    lat: encReal("lat"),
+    lng: encReal("lng"),
+    googlePlaceId: encText("google_place_id"),
+    googleMapsUri: encText("google_maps_uri"),
     estimatedCostLocal: real("estimated_cost_local"),
-    bookingRef: text("booking_ref"),
+    bookingRef: encText("booking_ref"),
     opensMinute: integer("opens_minute"),
     closesMinute: integer("closes_minute"),
-    localScriptName: text("local_script_name"),
-    phoneticPronunciation: text("phonetic_pronunciation"),
+    localScriptName: encText("local_script_name"),
+    phoneticPronunciation: encText("phonetic_pronunciation"),
     status: text("status", { enum: ["PENDING", "DONE", "SKIPPED"] }).notNull(),
     rev: integer("rev").notNull(),
     updatedAt: integer("updated_at").notNull(),
@@ -84,18 +94,18 @@ export const contextualItems = sqliteTable(
     dayId: text("day_id"),
     sortOrder: integer("sort_order").notNull(),
     category: text("category", { enum: ["TO_BUY", "EAT_SUGGESTION", "MORNING_PREP"] }).notNull(),
-    title: text("title").notNull(),
-    shopOrVenueName: text("shop_or_venue_name"),
-    priceBenchmarkNote: text("price_benchmark_note"),
+    title: encText("title").notNull(),
+    shopOrVenueName: encText("shop_or_venue_name"),
+    priceBenchmarkNote: encText("price_benchmark_note"),
     priceSource: text("price_source", { enum: ["AI_ESTIMATE", "USER"] }),
     estimatedCostLocal: real("estimated_cost_local"),
-    lat: real("lat"),
-    lng: real("lng"),
+    lat: encReal("lat"),
+    lng: encReal("lng"),
     geoVerified: integer("geo_verified", { mode: "boolean" }).notNull(),
-    googlePlaceId: text("google_place_id"),
+    googlePlaceId: encText("google_place_id"),
     distanceFromBlockMeters: integer("distance_from_block_meters"),
-    localScriptText: text("local_script_text"),
-    phoneticPronunciation: text("phonetic_pronunciation"),
+    localScriptText: encText("local_script_text"),
+    phoneticPronunciation: encText("phonetic_pronunciation"),
     isChecked: integer("is_checked", { mode: "boolean" }).notNull(),
     rev: integer("rev").notNull(),
     updatedAt: integer("updated_at").notNull(),
@@ -110,11 +120,11 @@ export const attachments = sqliteTable(
     tripId: tripId(),
     id: text("id").notNull(),
     blockId: text("block_id").notNull(),
-    fileName: text("file_name").notNull(),
+    fileName: encText("file_name").notNull(),
     mimeType: text("mime_type").notNull(),
     sizeBytes: integer("size_bytes").notNull(),
     sha256: text("sha256").notNull(),
-    data: blob("data", { mode: "buffer" }).notNull(),
+    data: encBlob("data").notNull(),
     rev: integer("rev").notNull(),
     createdAt: integer("created_at").notNull(),
   },
@@ -144,7 +154,7 @@ export const devices = sqliteTable(
     tripId: tripId(),
     userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
     installId: text("install_id").notNull(),
-    name: text("name").notNull(),
+    name: encText("name").notNull(),
     platform: text("platform").notNull(),
     appVersion: text("app_version").notNull(),
     tokenHash: text("token_hash").notNull().unique(),
@@ -200,11 +210,13 @@ export const connectorKeys = sqliteTable(
   {
     id: text("id").primaryKey(),
     userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-    name: text("name").notNull(),
+    name: encText("name").notNull(),
     keyHash: text("key_hash").notNull().unique(),
     createdAt: integer("created_at").notNull(),
     lastUsedAt: integer("last_used_at"),
     revokedAt: integer("revoked_at"),
+    // Links stop working after this time. Null on links made before expiry existed: they expire 90 days after creation.
+    expiresAt: integer("expires_at"),
   },
   (t) => [index("connector_keys_user").on(t.userId)],
 );
@@ -213,7 +225,7 @@ export const connectorKeys = sqliteTable(
 export const invites = sqliteTable("invites", {
   tokenHash: text("token_hash").primaryKey(),
   createdBy: text("created_by").notNull().references(() => users.id, { onDelete: "cascade" }),
-  note: text("note").notNull(),
+  note: encText("note").notNull(),
   role: text("role", { enum: ["ADMIN", "USER"] }).notNull().default("USER"),
   createdAt: integer("created_at").notNull(),
   expiresAt: integer("expires_at").notNull(),
@@ -221,7 +233,7 @@ export const invites = sqliteTable("invites", {
   usedBy: text("used_by").references(() => users.id, { onDelete: "set null" }),
 });
 
-// Failed sign-ins, counted per IP address to slow down password guessing.
+// Rate-limit events. Keys: "ip:<address>" for failed sign-ins, "mcp:<connector key id>" for connector calls.
 export const loginFailures = sqliteTable(
   "login_failures",
   {
@@ -230,4 +242,18 @@ export const loginFailures = sqliteTable(
     at: integer("at").notNull(),
   },
   (t) => [index("login_failures_key").on(t.key, t.at)],
+);
+
+// Security events: sign-ins, blocked attempts, new phones, new connector links, 2FA changes. Shown on /security and /admin.
+export const auditEvents = sqliteTable(
+  "audit_events",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    detail: encText("detail"),
+    ip: encText("ip"),
+    at: integer("at").notNull(),
+  },
+  (t) => [index("audit_events_user").on(t.userId, t.at), index("audit_events_at").on(t.at)],
 );

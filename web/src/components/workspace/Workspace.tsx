@@ -188,6 +188,9 @@ function TopBar({ user }: { user: WorkspaceUser }) {
         </Button>
         <Button onClick={() => useUiStore.getState().set({ phoneDialogOpen: true })}>Phone</Button>
         <Button onClick={() => useUiStore.getState().set({ connectorDialogOpen: true })}>Connector</Button>
+        <Link href="/security" className="text-xs text-neutral-400 hover:text-amber-300">
+          Security
+        </Link>
         {user.role === "ADMIN" && (
           <Link href="/admin" className="text-xs text-neutral-400 hover:text-amber-300">
             Admin

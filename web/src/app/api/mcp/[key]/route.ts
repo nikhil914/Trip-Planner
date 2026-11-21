@@ -1,5 +1,5 @@
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import { authenticateConnectorKey } from "@/server/lib/connector-keys";
+import { authenticateConnectorKey, connectorOverLimit } from "@/server/lib/connector-keys";
 import { buildMcpServer } from "@/server/lib/mcp-server";
 
 export const maxDuration = 60;
@@ -11,8 +11,14 @@ async function handle(request: Request, { params }: RouteContext<"/api/mcp/[key]
   const user = await authenticateConnectorKey(key);
   if (!user) {
     return Response.json(
-      { jsonrpc: "2.0", error: { code: -32001, message: "This connector link was revoked or is wrong. Create a new one on the trip planner." }, id: null },
+      { jsonrpc: "2.0", error: { code: -32001, message: "This connector link was revoked, expired or is wrong. Create a new one on the trip planner." }, id: null },
       { status: 401 },
+    );
+  }
+  if (await connectorOverLimit(user.keyId)) {
+    return Response.json(
+      { jsonrpc: "2.0", error: { code: -32002, message: "Too many calls on this connector link. Wait 10 minutes." }, id: null },
+      { status: 429, headers: { "Retry-After": "600" } },
     );
   }
   const origin = process.env.PUBLIC_URL?.replace(/\/+$/, "") || new URL(request.url).origin;

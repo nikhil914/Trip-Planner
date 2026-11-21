@@ -30,6 +30,21 @@ export function AuthForm({ mode, invite }: { mode: "login" | "signup"; invite?: 
           Password
           <Input name="password" type="password" autoComplete={signup ? "new-password" : "current-password"} required minLength={8} />
         </label>
+        {!signup && (
+          <label className={label}>
+            Two-factor code <span className="normal-case text-neutral-600">(only if turned on)</span>
+            <Input
+              name="code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              pattern="[0-9 ]{6,7}"
+              maxLength={7}
+              placeholder="123456"
+              autoFocus={state.needsCode}
+              aria-label="Two-factor code"
+            />
+          </label>
+        )}
         {state.error && (
           <p className="text-xs text-red-400" role="alert">
             {state.error}

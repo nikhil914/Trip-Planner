@@ -22,6 +22,13 @@
       "when": 1795298396522,
       "tag": "0002_invites_login_limits",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1795299671685,
+      "tag": "0003_hardening",
+      "breakpoints": true
     }
   ]
 }
