@@ -19,7 +19,7 @@ async function Target({ params }: { params: Promise<{ token: string }> }) {
     return (
       <Shell>
         <h1 className="text-base font-semibold text-neutral-100">This upload link has expired</h1>
-        <p className="text-sm text-neutral-400">Links work for 24 hours. Ask for a new one, or attach the file from the block on the board.</p>
+        <p className="text-sm text-neutral-400">Links work for 1 hour. Ask for a new one, or attach the file from the block on the board.</p>
       </Shell>
     );
   }

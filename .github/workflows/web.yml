@@ -6,6 +6,9 @@ on:
     paths: ["web/**", ".github/workflows/web.yml"]
   pull_request:
     paths: ["web/**", ".github/workflows/web.yml"]
+  # Weekly, so a newly published vulnerability in a dependency shows up even when nothing changed.
+  schedule:
+    - cron: "17 5 * * 1"
 
 permissions:
   contents: read
@@ -33,6 +36,9 @@ jobs:
           cache-dependency-path: web/package-lock.json
 
       - run: npm ci
+
+      - name: Audit runtime dependencies
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Lint
         run: npm run lint

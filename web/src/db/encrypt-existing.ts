@@ -6,7 +6,7 @@ type Kind = "text" | "lookup" | "real" | "blob";
 
 // Every encrypted column, by table. Keep in step with the enc* columns in schema.ts.
 const COLUMNS: Record<string, Record<string, Kind>> = {
-  users: { email: "lookup", name: "text" },
+  users: { email: "lookup", name: "text", totp_secret: "text" },
   trips: { title: "text", destination_label: "text" },
   timeline_blocks: {
     title: "text", subtitle_or_tip: "text", lat: "real", lng: "real", google_place_id: "text", google_maps_uri: "text",
@@ -20,6 +20,7 @@ const COLUMNS: Record<string, Record<string, Kind>> = {
   devices: { name: "text" },
   connector_keys: { name: "text" },
   invites: { note: "text" },
+  audit_events: { detail: "text", ip: "text" },
 };
 
 // SQL that is true when the column still holds a plain value.

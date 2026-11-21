@@ -4,6 +4,7 @@ import { createClient } from "@libsql/client";
 import { drizzle, type LibSQLDatabase } from "drizzle-orm/libsql";
 import { migrate } from "drizzle-orm/libsql/migrator";
 import { encryptExistingRows } from "./encrypt-existing";
+import { purgeEndedTrips } from "./retention";
 import * as schema from "./schema";
 
 export type Db = LibSQLDatabase<typeof schema>;
@@ -21,6 +22,7 @@ async function open(): Promise<Db> {
     console.warn("DATA_ENCRYPTION_KEY is not set: personal data is stored unencrypted.");
   }
   await encryptExistingRows(client);
+  await purgeEndedTrips(client);
   return db;
 }
 

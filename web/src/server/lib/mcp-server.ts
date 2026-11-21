@@ -435,7 +435,7 @@ export function buildMcpServer(userId: string, origin: string): McpServer {
     {
       title: "Get a link to attach files",
       description:
-        "Returns a private link the user opens to pick ticket or voucher files (PDF, PNG, JPEG, WebP, up to 4 MB each) for one block. The files show on the board and download to the phone for offline use. The link works for 24 hours.",
+        "Returns a private link the user opens to pick ticket or voucher files (PDF, PNG, JPEG, WebP, up to 4 MB each) for one block. The files show on the board and download to the phone for offline use. The link works for 1 hour.",
       inputSchema: { block_id: z.string().min(1).max(80) },
     },
     ({ block_id }) =>
