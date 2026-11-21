@@ -38,6 +38,12 @@ function seal(value: unknown, kind: Kind): unknown {
  */
 export async function encryptExistingRows(client: Client): Promise<number> {
   if (!encryptionEnabled()) return 0;
+  // One round trip decides whether there is anything to do, so a normal cold start stays fast.
+  const probe = Object.entries(COLUMNS)
+    .map(([table, columns]) => `SELECT 1 FROM ${table} WHERE ${Object.entries(columns).map(([c, k]) => plain(c, k)).join(" OR ")}`)
+    .join(" UNION ALL ");
+  const any = await client.execute(`SELECT EXISTS (${probe}) AS pending`);
+  if (!Number(any.rows[0]?.pending)) return 0;
   let sealed = 0;
   for (const [table, columns] of Object.entries(COLUMNS)) {
     for (const [col, kind] of Object.entries(columns)) {
