@@ -178,7 +178,9 @@ private suspend fun renderFile(file: File, mimeType: String, widthPx: Int): List
 fun TicketModal(m: Modal.Ticket, onDismiss: () -> Unit) {
     if (m.files.isEmpty()) {
         WhiteModal(onDismiss) {
-            Text("No ticket attached. Add one from the planner.", color = Ink, fontSize = 18.sp, textAlign = TextAlign.Center, modifier = Modifier.align(Alignment.Center).padding(32.dp))
+            Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
+                Text("No ticket attached. Add one from the planner.", color = Ink, fontSize = 18.sp, textAlign = TextAlign.Center)
+            }
         }
         return
     }
