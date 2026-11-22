@@ -10,6 +10,8 @@ import app.tripplanner.fieldguide.sync.OutboxWorker
 import app.tripplanner.fieldguide.sync.PairRequest
 import app.tripplanner.fieldguide.sync.SyncApi
 
+enum class PairPhase { CONNECTING, PLAN, FILES, READY }
+
 /** Every write lands in Room and the outbox in one transaction. The UI reads Room only. */
 class ItineraryRepository(
     private val context: Context,
@@ -48,7 +50,8 @@ class ItineraryRepository(
         return moved
     }
 
-    suspend fun pair(serverUrl: String, code: String, deviceName: String, appVersion: String) {
+    suspend fun pair(serverUrl: String, code: String, deviceName: String, appVersion: String, onPhase: (PairPhase) -> Unit = {}) {
+        onPhase(PairPhase.CONNECTING)
         val response = api.pair(serverUrl, PairRequest(code, DeviceInfo(session.installId, deviceName, appVersion = appVersion)))
         db.withTransaction {
             dao.clearTripTables()
@@ -56,15 +59,17 @@ class ItineraryRepository(
         }
         vault.clear()
         session.paired(serverUrl, response.tripId, response.syncToken)
-        pull()
+        pull(onPhase)
+        onPhase(PairPhase.READY)
     }
 
     /** Runs on app launch and on swipe-to-refresh only. Returns how many attachment downloads failed. */
-    suspend fun pull(): Int {
+    suspend fun pull(onPhase: (PairPhase) -> Unit = {}): Int {
         val s = session.current
         val tripId = s.tripId ?: return 0
         if (!s.canSync) return 0
 
+        onPhase(PairPhase.PLAN)
         val delta = api.pull(tripId, s.rev)
         val now = System.currentTimeMillis()
         db.withTransaction {
@@ -83,6 +88,7 @@ class ItineraryRepository(
         }
         session.setRev(delta.rev)
 
+        onPhase(PairPhase.FILES)
         val failed = vault.sync(dao.attachments(tripId))
         BriefingScheduler.armNext(context, dao, tripId)
         if (dao.pendingOutbox().isNotEmpty()) OutboxWorker.enqueue(context, s.wifiOnly, delayMinutes = 0)
