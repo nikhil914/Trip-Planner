@@ -29,6 +29,13 @@
       "when": 1795299671685,
       "tag": "0003_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1795423759397,
+      "tag": "0004_budget_expenses",
+      "breakpoints": true
     }
   ]
 }

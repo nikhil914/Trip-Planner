@@ -31,6 +31,14 @@ abstract class ItineraryDao {
     @Query("SELECT * FROM timeline_blocks WHERE day_id = :dayId AND start_minute IS NOT NULL ORDER BY start_minute, sort_order")
     abstract fun observeAgenda(dayId: String): Flow<List<BlockWithContext>>
 
+    /** Every block of the trip, scheduled or not, with its linked items and files. A trip is small enough to hold in memory. */
+    @Transaction
+    @Query("SELECT * FROM timeline_blocks WHERE trip_id = :tripId ORDER BY start_minute, sort_order")
+    abstract fun observeBlocks(tripId: String): Flow<List<BlockWithContext>>
+
+    @Query("SELECT * FROM contextual_items WHERE trip_id = :tripId ORDER BY title")
+    abstract fun observeItems(tripId: String): Flow<List<ContextualItemEntity>>
+
     @Query("SELECT * FROM contextual_items WHERE day_id = :dayId AND category = 'MORNING_PREP' ORDER BY title")
     abstract fun observePrep(dayId: String): Flow<List<ContextualItemEntity>>
 
@@ -58,6 +66,16 @@ abstract class ItineraryDao {
 
     @Query("SELECT COUNT(*) FROM outbox")
     abstract fun observeOutboxSize(): Flow<Int>
+
+    @Query("SELECT * FROM expenses WHERE trip_id = :tripId ORDER BY occurred_at DESC")
+    abstract fun observeExpenses(tripId: String): Flow<List<ExpenseEntity>>
+
+    @Query("SELECT * FROM expenses WHERE trip_id = :tripId ORDER BY occurred_at")
+    abstract suspend fun expenses(tripId: String): List<ExpenseEntity>
+
+    /** Expense ids with an edit still waiting to upload. */
+    @Query("SELECT DISTINCT entity_id FROM outbox WHERE entity = 'expense'")
+    abstract fun observeUnsentExpenseIds(): Flow<List<String>>
 
     // ---- Cascade delay ----
     // A block is shiftable when it is flexible, still pending, and has not ended by :nowMinute.
@@ -147,6 +165,12 @@ abstract class ItineraryDao {
     @Query("UPDATE timeline_blocks SET start_minute = :minute, updated_at = :now WHERE id = :id")
     abstract suspend fun setStart(id: String, minute: Int, now: Long)
 
+    @Query("UPDATE trips SET budget_minor = :minor")
+    abstract suspend fun setBudget(minor: Long?)
+
+    @Query("UPDATE trips SET shared_ledger = :shared")
+    abstract suspend fun setSharedLedger(shared: Boolean)
+
     @Transaction
     open suspend fun checkItem(id: String, checked: Boolean, now: Long) {
         setChecked(id, checked, now)
@@ -169,6 +193,8 @@ abstract class ItineraryDao {
             "is_checked" -> setChecked(id, json == "true", now)
             "status" -> setStatus(id, json.trim('"'), now)
             "start_minute" -> json.toIntOrNull()?.let { setStart(id, it, now) }
+            "budget_minor" -> setBudget(json.toLongOrNull())
+            "shared_ledger" -> setSharedLedger(json == "true")
         }
     }
 
@@ -208,6 +234,19 @@ abstract class ItineraryDao {
 
     @Upsert
     abstract suspend fun upsertAttachments(rows: List<AttachmentEntity>)
+
+    @Upsert
+    abstract suspend fun upsertExpenses(rows: List<ExpenseEntity>)
+
+    @Query("DELETE FROM expenses WHERE id IN (:ids)")
+    abstract suspend fun deleteExpenses(ids: List<String>)
+
+    /** Run when the ledger is no longer shared: the other traveller's rows leave this phone. */
+    @Query("DELETE FROM expenses WHERE mine = 0")
+    abstract suspend fun deleteOthersExpenses()
+
+    @Query("DELETE FROM expenses")
+    abstract suspend fun clearExpenses()
 
     @Query("DELETE FROM trip_days WHERE id IN (:ids)")
     abstract suspend fun deleteDays(ids: List<String>)
@@ -250,5 +289,6 @@ abstract class ItineraryDao {
         clearBlocks()
         clearItems()
         clearAttachments()
+        clearExpenses()
     }
 }

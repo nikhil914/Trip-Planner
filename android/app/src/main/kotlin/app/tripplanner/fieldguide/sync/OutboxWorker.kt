@@ -81,9 +81,10 @@ class OutboxWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                     val mutation = byId[result.mutationId] ?: continue
                     when (result.status) {
                         "conflict" -> result.serverValue?.let { dao.applyField(mutation.id, mutation.field, it.toString(), now) }
-                        "gone" ->
-                            if (mutation.entity == Entities.BLOCK) dao.deleteBlocks(listOf(mutation.id))
-                            else dao.deleteItems(listOf(mutation.id))
+                        "gone" -> when (mutation.entity) {
+                            Entities.BLOCK -> dao.deleteBlocks(listOf(mutation.id))
+                            Entities.ITEM -> dao.deleteItems(listOf(mutation.id))
+                        }
                     }
                 }
                 dao.deleteBatch(batchId)

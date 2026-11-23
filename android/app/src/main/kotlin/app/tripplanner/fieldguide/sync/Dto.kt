@@ -2,6 +2,7 @@ package app.tripplanner.fieldguide.sync
 
 import app.tripplanner.fieldguide.data.AttachmentEntity
 import app.tripplanner.fieldguide.data.ContextualItemEntity
+import app.tripplanner.fieldguide.data.ExpenseEntity
 import app.tripplanner.fieldguide.data.TimelineBlockEntity
 import app.tripplanner.fieldguide.data.TripDayEntity
 import app.tripplanner.fieldguide.data.TripEntity
@@ -44,8 +45,13 @@ data class TripDto(
     @SerialName("end_date") val endDate: String,
     @SerialName("wake_minute") val wakeMinute: Int = 450,
     @SerialName("updated_at") val updatedAt: Long = 0,
+    @SerialName("budget_minor") val budgetMinor: Long? = null,
+    @SerialName("shared_ledger") val sharedLedger: Boolean = false,
 ) {
-    fun toEntity() = TripEntity(id, title, destinationTimezone, homeCurrency, localCurrency, exchangeRate, startDate, endDate, wakeMinute, updatedAt)
+    fun toEntity() = TripEntity(
+        id, title, destinationTimezone, homeCurrency, localCurrency, exchangeRate, startDate, endDate, wakeMinute, updatedAt,
+        budgetMinor, sharedLedger,
+    )
 }
 
 @Serializable
@@ -132,6 +138,47 @@ data class AttachmentDto(
     fun toEntity(tripId: String) = AttachmentEntity(id, tripId, blockId, fileName, mimeType, sizeBytes, sha256, downloadPath)
 }
 
+/**
+ * One expense row on the wire. The phone pushes it whole (outbox field "row") and gets it back in a pull.
+ * A row with [deletedAt] set was deleted on the phone that owns it.
+ */
+@Serializable
+data class ExpenseDto(
+    val id: String? = null,
+    val mine: Boolean = true,
+    val kind: String,
+    @SerialName("day_id") val dayId: String? = null,
+    @SerialName("block_id") val blockId: String? = null,
+    @SerialName("occurred_at") val occurredAt: Long,
+    @SerialName("amount_minor") val amountMinor: Long,
+    val currency: String,
+    @SerialName("rate_to_home") val rateToHome: Double,
+    @SerialName("home_minor") val homeMinor: Long,
+    @SerialName("billed_home_minor") val billedHomeMinor: Long? = null,
+    val method: String,
+    val category: String,
+    val merchant: String? = null,
+    val note: String? = null,
+    val prepaid: Boolean = false,
+    @SerialName("paid_by") val paidBy: String? = null,
+    @SerialName("updated_at") val updatedAt: Long,
+    @SerialName("deleted_at") val deletedAt: Long? = null,
+) {
+    fun toEntity(tripId: String, rowId: String = id ?: "") = ExpenseEntity(
+        rowId, tripId, mine, kind, dayId, blockId, occurredAt, amountMinor, currency, rateToHome, homeMinor, billedHomeMinor,
+        method, category, merchant, note, prepaid, paidBy, updatedAt,
+    )
+
+    companion object {
+        fun of(e: ExpenseEntity, deletedAt: Long? = null) = ExpenseDto(
+            id = null, kind = e.kind, dayId = e.dayId, blockId = e.blockId, occurredAt = e.occurredAt, amountMinor = e.amountMinor,
+            currency = e.currency, rateToHome = e.rateToHome, homeMinor = e.homeMinor, billedHomeMinor = e.billedHomeMinor,
+            method = e.method, category = e.category, merchant = e.merchant, note = e.note, prepaid = e.prepaid, paidBy = e.paidBy,
+            updatedAt = e.updatedAt, deletedAt = deletedAt,
+        )
+    }
+}
+
 @Serializable
 data class DeletedIds(
     @SerialName("trip_days") val tripDays: List<String> = emptyList(),
@@ -150,6 +197,7 @@ data class PullResponse(
     @SerialName("timeline_blocks") val timelineBlocks: List<BlockDto> = emptyList(),
     @SerialName("contextual_items") val contextualItems: List<ItemDto> = emptyList(),
     val attachments: List<AttachmentDto> = emptyList(),
+    val expenses: List<ExpenseDto> = emptyList(),
     val deleted: DeletedIds = DeletedIds(),
 )
 

@@ -19,6 +19,9 @@ data class TripEntity(
     @ColumnInfo(name = "end_date") val endDate: String,
     @ColumnInfo(name = "wake_minute") val wakeMinute: Int,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,
+    /** Trip budget in minor units of the local currency. */
+    @ColumnInfo(name = "budget_minor") val budgetMinor: Long? = null,
+    @ColumnInfo(name = "shared_ledger", defaultValue = "0") val sharedLedger: Boolean = false,
 )
 
 @Entity(tableName = "trip_days", indices = [Index("trip_id", "date_iso")])
@@ -97,6 +100,33 @@ data class AttachmentEntity(
     @ColumnInfo(name = "download_path") val downloadPath: String,
 )
 
+/**
+ * A money movement logged on a phone. Amounts are minor units of [currency]; [homeMinor] is the home-currency value at
+ * the rate used when it was saved. [mine] is false for the other traveller's rows on a shared ledger.
+ */
+@Entity(tableName = "expenses", indices = [Index("trip_id"), Index("day_id"), Index("block_id")])
+data class ExpenseEntity(
+    @PrimaryKey val id: String,
+    @ColumnInfo(name = "trip_id") val tripId: String,
+    val mine: Boolean,
+    val kind: String,
+    @ColumnInfo(name = "day_id") val dayId: String?,
+    @ColumnInfo(name = "block_id") val blockId: String?,
+    @ColumnInfo(name = "occurred_at") val occurredAt: Long,
+    @ColumnInfo(name = "amount_minor") val amountMinor: Long,
+    val currency: String,
+    @ColumnInfo(name = "rate_to_home") val rateToHome: Double,
+    @ColumnInfo(name = "home_minor") val homeMinor: Long,
+    @ColumnInfo(name = "billed_home_minor") val billedHomeMinor: Long?,
+    val method: String,
+    val category: String,
+    val merchant: String?,
+    val note: String?,
+    val prepaid: Boolean,
+    @ColumnInfo(name = "paid_by") val paidBy: String?,
+    @ColumnInfo(name = "updated_at") val updatedAt: Long,
+)
+
 /** Append-only log of local edits waiting to be pushed. */
 @Entity(tableName = "outbox", indices = [Index("batch_id")])
 data class OutboxEntity(
@@ -115,6 +145,8 @@ data class OutboxEntity(
 object Entities {
     const val BLOCK = "timeline_block"
     const val ITEM = "contextual_item"
+    const val TRIP = "trip"
+    const val EXPENSE = "expense"
 }
 
 object Status {

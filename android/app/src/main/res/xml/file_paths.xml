@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Files another app may open when the traveller taps "Open in another app". Access is granted per file, read-only. -->
+<paths>
+    <files-path name="documents" path="local-docs/" />
+    <files-path name="tickets" path="vault/" />
+    <cache-path name="exports" path="exports/" />
+</paths>

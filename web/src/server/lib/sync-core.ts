@@ -5,7 +5,8 @@ import { z } from "zod";
 import { getDb, schema } from "@/db/client";
 import { ENTITY } from "@/db/schema";
 
-const { trips, tripDays, timelineBlocks, contextualItems, attachments, tombstones, devices, pairingCodes, pairAttempts, appliedMutations, users } = schema;
+const { trips, tripDays, timelineBlocks, contextualItems, attachments, expenses, tombstones, devices, pairingCodes, pairAttempts, appliedMutations, users } =
+  schema;
 
 export const CODE_TTL_MS = 10 * 60_000;
 const ATTEMPT_WINDOW_MS = 10 * 60_000;
@@ -114,7 +115,8 @@ export async function authenticateDevice(authorization: string | null, tripId: s
   return row.device;
 }
 
-export async function pull(tripId: string, since: number) {
+/** `owner` is the calling phone's install id: it always gets its own spends, and the other phone's only on a shared ledger. */
+export async function pull(tripId: string, since: number, owner: string) {
   const db = await getDb();
   const trip = await db.query.trips.findFirst({ where: eq(trips.id, tripId) });
   if (!trip) throw new SyncError(404, "trip_not_found");
@@ -122,7 +124,11 @@ export async function pull(tripId: string, since: number) {
   const full = since <= 0 || since > trip.rev;
   const after = full ? -1 : since;
 
-  const [days, blocks, items, files, tombs] = await Promise.all([
+  const spendWhere = trip.sharedLedger
+    ? and(eq(expenses.tripId, tripId), gt(expenses.rev, after))
+    : and(eq(expenses.tripId, tripId), gt(expenses.rev, after), eq(expenses.owner, owner));
+
+  const [days, blocks, items, files, spends, tombs] = await Promise.all([
     db.select().from(tripDays).where(and(eq(tripDays.tripId, tripId), gt(tripDays.rev, after))),
     db.select().from(timelineBlocks).where(and(eq(timelineBlocks.tripId, tripId), gt(timelineBlocks.rev, after))),
     db.select().from(contextualItems).where(and(eq(contextualItems.tripId, tripId), gt(contextualItems.rev, after))),
@@ -137,6 +143,7 @@ export async function pull(tripId: string, since: number) {
       })
       .from(attachments)
       .where(and(eq(attachments.tripId, tripId), gt(attachments.rev, after))),
+    db.select().from(expenses).where(spendWhere),
     full ? [] : db.select().from(tombstones).where(and(eq(tombstones.tripId, tripId), gt(tombstones.rev, after))),
   ]);
   const deleted = (entity: string) => tombs.filter((t) => t.entity === entity).map((t) => t.entityId);
@@ -158,6 +165,8 @@ export async function pull(tripId: string, since: number) {
             start_date: trip.startDate,
             end_date: trip.endDate,
             wake_minute: trip.wakeMinute,
+            budget_minor: trip.budgetMinor,
+            shared_ledger: trip.sharedLedger,
             updated_at: trip.updatedAt,
           }
         : null,
@@ -224,6 +233,28 @@ export async function pull(tripId: string, since: number) {
       sha256: f.sha256,
       download_path: `/api/trips/${encodeURIComponent(tripId)}/attachments/${encodeURIComponent(f.id)}`,
     })),
+    // A row with deleted_at set was deleted on a phone; the phone that holds it drops it.
+    expenses: spends.map((e) => ({
+      id: e.id,
+      mine: e.owner === owner,
+      kind: e.kind,
+      day_id: e.dayId,
+      block_id: e.blockId,
+      occurred_at: e.occurredAt,
+      amount_minor: e.amountMinor,
+      currency: e.currency,
+      rate_to_home: e.rateToHome,
+      home_minor: e.homeMinor,
+      billed_home_minor: e.billedHomeMinor,
+      method: e.method,
+      category: e.category,
+      merchant: e.merchant,
+      note: e.note,
+      prepaid: e.prepaid,
+      paid_by: e.paidBy,
+      updated_at: e.clientUpdatedAt,
+      deleted_at: e.deletedAt,
+    })),
     deleted: {
       trip_days: deleted(ENTITY.day),
       timeline_blocks: deleted(ENTITY.block),
@@ -258,26 +289,49 @@ interface MutationResult {
 }
 
 const Status = z.enum(["PENDING", "DONE", "SKIPPED"]);
+const Minor = z.number().int().min(-1_000_000_000_000).max(1_000_000_000_000);
+// The phone leaves null fields out of the JSON, so every nullable field defaults to null.
+const ExpenseRow = z.object({
+  kind: z.enum(["SPEND", "ATM", "EXCHANGE", "OPENING_CASH", "CASH_COUNT"]),
+  day_id: z.string().max(80).nullable().default(null),
+  block_id: z.string().max(80).nullable().default(null),
+  occurred_at: z.number().int().min(0),
+  amount_minor: Minor,
+  currency: z.string().regex(/^[A-Z]{3}$/),
+  rate_to_home: z.number().positive().finite(),
+  home_minor: Minor,
+  billed_home_minor: Minor.nullable().default(null),
+  method: z.enum(["CASH", "CARD", "OTHER"]),
+  category: z.string().min(1).max(40),
+  merchant: z.string().max(200).nullable().default(null),
+  note: z.string().max(1000).nullable().default(null),
+  prepaid: z.boolean(),
+  paid_by: z.enum(["A", "B", "SHARED"]).nullable().default(null),
+  updated_at: z.number().int().min(0),
+  deleted_at: z.number().int().min(0).nullable().default(null),
+});
+const Budget = z.number().int().min(0).max(1_000_000_000_000).nullable();
 const StartMinute = z.number().int().min(0).max(1439);
 
 /**
- * Applies a phone's outbox batch in one transaction. The phone may write `status`, `is_checked` and `start_minute`
- * and nothing else. `start_minute` is compare-and-swap against `base`, so a block the web moved meanwhile is not
+ * Applies a phone's outbox batch in one transaction. The phone may write `status`, `is_checked` and `start_minute`,
+ * the trip's `budget_minor` and `shared_ledger`, and whole expense rows it owns, and nothing else. `start_minute` is compare-and-swap against `base`, so a block the web moved meanwhile is not
  * overwritten: the phone gets the server's value back and adopts it.
  */
-export async function push(tripId: string, body: unknown) {
+export async function push(tripId: string, body: unknown, owner: string) {
   const parsed = PushBody.safeParse(body);
   if (!parsed.success) throw new SyncError(400, "invalid_batch");
   const db = await getDb();
 
   return db.transaction(async (tx) => {
-    const trip = await tx.query.trips.findFirst({ where: eq(trips.id, tripId), columns: { rev: true } });
+    const trip = await tx.query.trips.findFirst({ where: eq(trips.id, tripId), columns: { rev: true, sharedLedger: true } });
     if (!trip) throw new SyncError(404, "trip_not_found");
     const rev = trip.rev + 1;
     const now = Date.now();
     const stamp = { rev, updatedAt: now };
     const results: MutationResult[] = [];
     let applied = false;
+    let metaChanged = false;
 
     for (const m of parsed.data.mutations) {
       const answer = (status: MutationStatus, extra: Partial<MutationResult> = {}) => results.push({ mutation_id: m.mutation_id, status, ...extra });
@@ -316,6 +370,60 @@ export async function push(tripId: string, body: unknown) {
             }
           }
         }
+      } else if (m.entity === ENTITY.trip && m.id === tripId && m.field === "budget_minor") {
+        const value = Budget.safeParse(m.value);
+        if (value.success) {
+          await tx.update(trips).set({ budgetMinor: value.data }).where(eq(trips.id, tripId));
+          metaChanged = true;
+          status = "applied";
+        }
+      } else if (m.entity === ENTITY.trip && m.id === tripId && m.field === "shared_ledger") {
+        if (typeof m.value === "boolean") {
+          await tx.update(trips).set({ sharedLedger: m.value }).where(eq(trips.id, tripId));
+          // Turning sharing on must hand each phone the other's older rows, so they all get the new rev.
+          if (m.value && !trip.sharedLedger) await tx.update(expenses).set({ rev }).where(eq(expenses.tripId, tripId));
+          trip.sharedLedger = m.value;
+          metaChanged = true;
+          status = "applied";
+        }
+      } else if (m.entity === ENTITY.expense && m.field === "row") {
+        const value = ExpenseRow.safeParse(m.value);
+        if (value.success) {
+          const e = value.data;
+          const where = and(eq(expenses.tripId, tripId), eq(expenses.id, m.id));
+          const old = await tx.query.expenses.findFirst({ where, columns: { owner: true, clientUpdatedAt: true } });
+          if (old && old.owner !== owner) {
+            status = "rejected";
+          } else if (old && old.clientUpdatedAt > e.updated_at) {
+            status = "duplicate";
+          } else {
+            const row = {
+              kind: e.kind,
+              dayId: e.day_id,
+              blockId: e.block_id,
+              occurredAt: e.occurred_at,
+              amountMinor: e.amount_minor,
+              currency: e.currency,
+              rateToHome: e.rate_to_home,
+              homeMinor: e.home_minor,
+              billedHomeMinor: e.billed_home_minor,
+              method: e.method,
+              category: e.category,
+              merchant: e.merchant,
+              note: e.note,
+              prepaid: e.prepaid,
+              paidBy: e.paid_by,
+              clientUpdatedAt: e.updated_at,
+              deletedAt: e.deleted_at,
+              ...stamp,
+            };
+            await tx
+              .insert(expenses)
+              .values({ tripId, id: m.id, owner, ...row })
+              .onConflictDoUpdate({ target: [expenses.tripId, expenses.id], set: row });
+            status = "applied";
+          }
+        }
       } else if (m.entity === ENTITY.item && m.field === "is_checked") {
         const where = and(eq(contextualItems.tripId, tripId), eq(contextualItems.id, m.id));
         const item = await tx.query.contextualItems.findFirst({ where, columns: { id: true } });
@@ -332,7 +440,7 @@ export async function push(tripId: string, body: unknown) {
       answer(status, status === "conflict" ? { field: m.field, server_value: serverValue } : {});
     }
 
-    if (applied) await tx.update(trips).set(stamp).where(eq(trips.id, tripId));
+    if (applied) await tx.update(trips).set(metaChanged ? { ...stamp, metaRev: rev } : stamp).where(eq(trips.id, tripId));
     return { rev: applied ? rev : trip.rev, results };
   });
 }

@@ -8,11 +8,22 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # Node type definitions follow the Node version the app runs on (22), not the newest release.
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
+      # typescript-eslint (pulled in by eslint-config-next) does not run on TypeScript 7 yet.
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
   - package-ecosystem: gradle
     directory: /android
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # Gradle 9.6+ drops an internal API that the Android Gradle plugin 8.x needs. Move both together by hand.
+      - dependency-name: gradle-wrapper
+        update-types: [version-update:semver-major]
   - package-ecosystem: github-actions
     directory: /
     schedule:
