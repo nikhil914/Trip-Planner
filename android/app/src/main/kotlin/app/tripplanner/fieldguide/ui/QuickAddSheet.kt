@@ -108,7 +108,7 @@ fun QuickAddSheet(vm: AppViewModel, trip: TripUi, money: MoneyUi, request: Quick
     val localMinor = amount?.let { if (inHome) Math.round(it / t.exchangeRate) else it }
 
     // Plans to pick from: the given or saved one, the suggestion, then today's plans in time order.
-    val choices = buildList {
+    val choices = buildList<BlockUi> {
         listOfNotNull(editing?.blockId, request.blockId, suggested).forEach { id -> trip.byId[id]?.let { if (none { b -> b.id == it.id }) add(it) } }
         today?.blocks?.filter { !it.plan.isSkipped }?.sortedBy { it.e.startMinute ?: 0 }?.forEach { b -> if (none { it.id == b.id }) add(b) }
     }
