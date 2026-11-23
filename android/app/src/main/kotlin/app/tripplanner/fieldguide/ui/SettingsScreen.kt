@@ -162,7 +162,7 @@ fun SettingsScreen(vm: AppViewModel) {
         item {
             FgCard {
                 SectionTitle("Remove from this phone")
-                Text("Deletes the plan, tickets and any changes not yet uploaded.", style = FgType.body, color = fg.text)
+                Text("Deletes the plan, tickets, documents you linked and any changes not yet uploaded.", style = FgType.body, color = fg.text)
                 OutlinedButton(onClick = { confirmUnpair = true }, modifier = Modifier.fillMaxWidth()) { Text("Remove trip and unpair", color = fg.danger) }
             }
         }
@@ -181,7 +181,7 @@ fun SettingsScreen(vm: AppViewModel) {
             text = {
                 Text(
                     if (outbox > 0) "$outbox ${if (outbox == 1) "change has" else "changes have"} not uploaded and will be lost. You can pair again afterwards."
-                    else "The plan and tickets will be deleted from this phone. You can pair again afterwards.",
+                    else "The plan, tickets and documents you linked will be deleted from this phone. You can pair again afterwards.",
                 )
             },
             confirmButton = {

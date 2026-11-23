@@ -18,11 +18,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -53,6 +56,16 @@ fun walletPasses(trip: TripUi): List<BlockUi> = trip.scheduled.filter { b ->
 fun WalletTab(vm: AppViewModel, trip: TripUi) {
     val nav = LocalNav.current
     var filter by rememberSaveable { mutableStateOf(WalletFilter.ALL) }
+    var removing by remember { mutableStateOf<FileUi?>(null) }
+    removing?.let { doc ->
+        AlertDialog(
+            onDismissRequest = { removing = null },
+            title = { Text("Remove from this phone?") },
+            text = { Text("${doc.fileName} will be deleted from the app. The original in your phone's files is not touched.") },
+            confirmButton = { TextButton(onClick = { vm.removeDocument(doc.id); removing = null }) { Text("Remove") } },
+            dismissButton = { TextButton(onClick = { removing = null }) { Text("Cancel") } },
+        )
+    }
     val passes = walletPasses(trip)
     val files = trip.files
     val ready = files.count { it.ready }
@@ -77,7 +90,7 @@ fun WalletTab(vm: AppViewModel, trip: TripUi) {
 
     LazyColumn(contentPadding = PaddingValues(FgDims.margin), verticalArrangement = Arrangement.spacedBy(FgDims.gap)) {
         item {
-            if (files.isEmpty()) Callout(Tone.NEUTRAL, "No files attached yet", listOf("Add tickets and vouchers to plans in the planner. They download to this phone for offline use."))
+            if (files.isEmpty()) Callout(Tone.NEUTRAL, "No files attached yet", listOf("Open a plan and tap \"Link original ticket or document\" to keep the PDF on this phone, or add it in the planner."))
             else if (ready == files.size) Callout(Tone.SUCCESS, "All ${files.size} files on this phone", icon = Icons.Rounded.CheckCircle)
             else Callout(Tone.WARNING, "$ready of ${files.size} files on this phone", listOf("Connect and pull down on Today to download the rest."), icon = Icons.Rounded.CloudDownload)
         }
@@ -114,7 +127,22 @@ fun WalletTab(vm: AppViewModel, trip: TripUi) {
                     Text("${b.files.size} ${if (b.files.size == 1) "file" else "files"}", style = FgType.meta, color = fg.textSecondary)
                 }
             }
-            if (insurance == null && unscheduledDocs.isEmpty()) {
+            if (trip.orphanDocs.isNotEmpty()) {
+                item {
+                    FgCard {
+                        Text("From removed plans", style = FgType.cardTitle, color = fg.text)
+                        Text("You linked these on this phone. Their plan was removed in the planner.", style = FgType.meta, color = fg.textSecondary)
+                        trip.orphanDocs.forEachIndexed { i, doc ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(doc.fileName, style = FgType.body, color = fg.text, maxLines = 2, modifier = Modifier.weight(1f))
+                                TextButton(onClick = { nav.modal = Modal.Ticket(trip.orphanDocs, ticketTitles(trip.orphanDocs), i) }) { Text("Open") }
+                                TextButton(onClick = { removing = doc }) { Text("Remove") }
+                            }
+                        }
+                    }
+                }
+            }
+            if (insurance == null && unscheduledDocs.isEmpty() && trip.orphanDocs.isEmpty()) {
                 item { Text("Passport scans, insurance and visas attached in the planner show here.", style = FgType.meta, color = fg.textSecondary) }
             }
         }

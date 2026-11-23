@@ -1,5 +1,7 @@
 package app.tripplanner.fieldguide.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,26 +16,35 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
+import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.ConfirmationNumber
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Directions
+import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.Translate
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -81,6 +92,23 @@ fun BlockDetailScreen(vm: AppViewModel, trip: TripUi, id: String) {
     val f = p.flags
     var menu by remember { mutableStateOf(false) }
     val overlaps = id in trip.colliding
+    // Saveable: the picker can outlive this screen if the system reclaims the app while it is open.
+    var replacing by rememberSaveable { mutableStateOf<String?>(null) }
+    var removing by remember { mutableStateOf<FileUi?>(null) }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.linkDocument(id, uri, replacing)
+        replacing = null
+    }
+
+    removing?.let { file ->
+        AlertDialog(
+            onDismissRequest = { removing = null },
+            title = { Text("Remove from this phone?") },
+            text = { Text("${file.fileName} will be deleted from the app. The original in your phone's files is not touched.") },
+            confirmButton = { TextButton(onClick = { vm.removeDocument(file.id); removing = null }) { Text("Remove") } },
+            dismissButton = { TextButton(onClick = { removing = null }) { Text("Cancel") } },
+        )
+    }
 
     LazyColumn(contentPadding = PaddingValues(FgDims.margin), verticalArrangement = Arrangement.spacedBy(FgDims.gap)) {
         // 1. Header
@@ -111,6 +139,7 @@ fun BlockDetailScreen(vm: AppViewModel, trip: TripUi, id: String) {
                         } else {
                             DropdownMenuItem(text = { Text("Reopen") }, onClick = { menu = false; vm.markBlock(id, Status.PENDING, true) })
                         }
+                        DropdownMenuItem(text = { Text("Link ticket or document") }, leadingIcon = { Icon(Icons.Rounded.AttachFile, null) }, onClick = { menu = false; replacing = null; picker.launch(DOC_TYPES) })
                         DropdownMenuItem(text = { Text("Copy notes") }, onClick = { menu = false; copyText(context, p.displayTitle, "${p.displayTitle}\n${b.e.bookingRef.orEmpty()}\n${b.e.subtitleOrTip.orEmpty()}".trim()) })
                     }
                 }
@@ -252,29 +281,28 @@ fun BlockDetailScreen(vm: AppViewModel, trip: TripUi, id: String) {
             }
         }
 
-        // 13. Files
+        // 13. Tickets and documents: planner files plus originals linked on this phone
         item {
             FgCard {
-                SectionTitle("Files")
+                SectionTitle("Tickets and documents")
                 if (b.files.isEmpty()) {
-                    Text("No ticket attached. Add one from the planner.", style = FgType.body, color = fg.textSecondary)
+                    Text("Nothing linked yet. Link the original PDF or photo from this phone, or add one in the planner.", style = FgType.body, color = fg.textSecondary)
                 }
                 b.files.forEachIndexed { i, file ->
-                    Row(Modifier.fillMaxWidth().heightIn(min = FgDims.touch), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.Description, null, tint = fg.textSecondary)
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(file.attachment.fileName, style = FgType.body, color = fg.text)
-                            Text("${amount(file.attachment.sizeBytes / 1024.0)} KB", style = FgType.meta, color = fg.textSecondary)
-                        }
-                        if (file.ready) {
-                            StatusChip("On phone", Tone.SUCCESS, Icons.Rounded.CheckCircle)
-                        } else {
-                            StatusChip("Not downloaded", Tone.WARNING, Icons.Rounded.CloudDownload)
-                        }
-                        TextButton(onClick = { openTicket(nav, b, i) }) { Text("Open") }
-                    }
+                    FileRow(
+                        file = file,
+                        onOpen = { openTicket(nav, b, i) },
+                        onOpenElsewhere = { openExternally(context, file) },
+                        onReplace = { replacing = file.id; picker.launch(DOC_TYPES) },
+                        onRemove = { removing = file },
+                    )
                 }
+                OutlinedButton(onClick = { replacing = null; picker.launch(DOC_TYPES) }, modifier = Modifier.fillMaxWidth().heightIn(min = FgDims.touch)) {
+                    Icon(Icons.Rounded.AttachFile, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Link original ticket or document")
+                }
+                Text("Linked files are copied into the app and stay on this phone only. They are not uploaded.", style = FgType.meta, color = fg.textSecondary)
             }
         }
 
@@ -287,5 +315,42 @@ fun BlockDetailScreen(vm: AppViewModel, trip: TripUi, id: String) {
             }
         }
         item { Text("To change this plan, edit it on the web planner.", style = FgType.meta, color = fg.textSecondary, modifier = Modifier.padding(bottom = 24.dp)) }
+    }
+}
+
+/** What the system picker offers when linking a document. The bytes are checked again after copying. */
+private val DOC_TYPES = arrayOf("application/pdf", "image/*")
+
+@Composable
+private fun FileRow(file: FileUi, onOpen: () -> Unit, onOpenElsewhere: () -> Unit, onReplace: () -> Unit, onRemove: () -> Unit) {
+    var menu by remember { mutableStateOf(false) }
+    Row(Modifier.fillMaxWidth().heightIn(min = FgDims.touch), verticalAlignment = Alignment.CenterVertically) {
+        Icon(if (file.mimeType == "application/pdf") Icons.Rounded.Description else Icons.Rounded.Image, null, tint = fg.textSecondary)
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(file.fileName, style = FgType.body, color = fg.text, maxLines = 2)
+            Text("${amount(file.sizeBytes / 1024.0)} KB", style = FgType.meta, color = fg.textSecondary)
+            when {
+                file.localOnly -> StatusChip("Only on this phone", Tone.PRIMARY, Icons.Rounded.PhoneAndroid)
+                file.ready -> StatusChip("From planner · on phone", Tone.SUCCESS, Icons.Rounded.CheckCircle)
+                else -> StatusChip("From planner · not downloaded", Tone.WARNING, Icons.Rounded.CloudDownload)
+            }
+        }
+        TextButton(onClick = onOpen) { Text("Open") }
+        Box {
+            IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, "More for ${file.fileName}", tint = fg.text) }
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                DropdownMenuItem(
+                    text = { Text("Open in another app") },
+                    leadingIcon = { Icon(Icons.AutoMirrored.Rounded.OpenInNew, null) },
+                    enabled = file.ready,
+                    onClick = { menu = false; onOpenElsewhere() },
+                )
+                if (file.localOnly) {
+                    DropdownMenuItem(text = { Text("Replace") }, leadingIcon = { Icon(Icons.Rounded.SwapHoriz, null) }, onClick = { menu = false; onReplace() })
+                    DropdownMenuItem(text = { Text("Remove from phone") }, leadingIcon = { Icon(Icons.Rounded.Delete, null) }, onClick = { menu = false; onRemove() })
+                }
+            }
+        }
     }
 }
