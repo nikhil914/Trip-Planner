@@ -21,6 +21,9 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     ignore:
+      # okhttp 5 needs compileSdk 37, which needs Android Gradle plugin 9 and Gradle 9. Move them together by hand.
+      - dependency-name: com.squareup.okhttp3:okhttp
+        update-types: [version-update:semver-major]
       # Gradle 9.6+ drops an internal API that the Android Gradle plugin 8.x needs. Move both together by hand.
       - dependency-name: gradle-wrapper
         update-types: [version-update:semver-major]
