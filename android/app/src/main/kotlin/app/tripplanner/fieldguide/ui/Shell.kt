@@ -34,6 +34,9 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.SnackbarData
+import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -43,11 +46,11 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -80,6 +83,7 @@ sealed interface Route {
     data class ListDetail(val blockId: String) : Route
     data object Stays : Route
     data object Money : Route
+    data class MoneyDay(val dayId: String?) : Route
     data object Safety : Route
     data object Settings : Route
 }
@@ -138,8 +142,13 @@ fun Shell(vm: AppViewModel) {
     val trip by vm.trip.collectAsStateWithLifecycle()
     vm.now.collectAsStateWithLifecycle().value // recompose on the clock tick
 
+    val money by vm.money.collectAsStateWithLifecycle()
+    val quickAdd by vm.quickAdd.collectAsStateWithLifecycle()
+    var notice by remember { mutableStateOf<Notice?>(null) }
+
     LaunchedEffect(Unit) {
         vm.notices.collect { n ->
+            notice = n
             val result = snackbar.showSnackbar(n.text, actionLabel = n.action, duration = if (n.action != null) SnackbarDuration.Long else SnackbarDuration.Short)
             if (result == SnackbarResult.ActionPerformed) n.onAction?.invoke()
         }
@@ -153,7 +162,7 @@ fun Shell(vm: AppViewModel) {
             containerColor = fg.background,
             topBar = { ShellTopBar(vm, nav, trip, route) },
             bottomBar = { if (route == null) BottomBar(nav) },
-            snackbarHost = { SnackbarHost(snackbar) },
+            snackbarHost = { SnackbarHost(snackbar) { data -> NoticeSnackbar(data, notice) } },
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
                 when (route) {
@@ -167,7 +176,8 @@ fun Shell(vm: AppViewModel) {
                     is Route.Block -> BlockDetailScreen(vm, trip, route.id)
                     is Route.ListDetail -> ListDetailScreen(vm, trip, route.blockId)
                     Route.Stays -> StaysScreen(trip)
-                    Route.Money -> MoneyScreen(trip)
+                    Route.Money -> MoneyScreen(vm, trip)
+                    is Route.MoneyDay -> MoneyDayScreen(vm, trip, route.dayId)
                     Route.Safety -> SafetyScreen(trip)
                     Route.Settings -> SettingsScreen(vm)
                 }
@@ -179,6 +189,7 @@ fun Shell(vm: AppViewModel) {
             Sheet.Sync -> SyncSheet(vm, trip) { nav.sheet = null }
             null -> Unit
         }
+        quickAdd?.let { req -> QuickAddSheet(vm, trip, money, req) { vm.closeQuickAdd() } }
         when (val m = nav.modal) {
             is Modal.ShowLocal -> ShowLocalModal(m) { nav.modal = null }
             is Modal.Ticket -> TicketModal(m) { nav.modal = null }
@@ -194,6 +205,7 @@ private fun routeTitle(route: Route, trip: TripUi): Pair<String, String?> = when
     is Route.ListDetail -> (trip.lists.firstOrNull { it.blockId == route.blockId }?.title ?: "List") to null
     Route.Stays -> "Stays" to null
     Route.Money -> "Money" to null
+    is Route.MoneyDay -> (route.dayId?.let { id -> trip.dayOf(id)?.let { "Money · Day ${it.day.dayNumber}" to dayLabel(it.day.dateIso) } } ?: ("Pre-paid" to null))
     Route.Safety -> "Safety and emergency" to null
     Route.Settings -> "Settings" to null
 }
@@ -245,6 +257,7 @@ private fun ShellTopBar(vm: AppViewModel, nav: Nav, trip: TripUi, route: Route?)
                 IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, contentDescription = "More", tint = fg.text) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(text = { Text("Settings") }, onClick = { menu = false; nav.push(Route.Settings) })
+                    DropdownMenuItem(text = { Text("Log spend") }, onClick = { menu = false; vm.openQuickAdd() })
                     DropdownMenuItem(text = { Text("Money and converter") }, onClick = { menu = false; nav.push(Route.Money) })
                     DropdownMenuItem(text = { Text("Sync now") }, onClick = { menu = false; vm.refresh() })
                 }
@@ -302,4 +315,20 @@ private fun BottomBar(nav: Nav) {
             )
         }
     }
+}
+
+/** Snackbar with up to two actions: "Undo" and, after marking a plan done, "Log spend". */
+@Composable
+private fun NoticeSnackbar(data: SnackbarData, notice: Notice?) {
+    val second = notice?.takeIf { it.text == data.visuals.message }?.let { n -> n.action2?.let { it to n.onAction2 } }
+    Snackbar(
+        action = {
+            Row {
+                second?.let { (label, run) ->
+                    TextButton(onClick = { data.dismiss(); run?.invoke() }) { Text(label) }
+                }
+                data.visuals.actionLabel?.let { label -> TextButton(onClick = { data.performAction() }) { Text(label) } }
+            }
+        },
+    ) { Text(data.visuals.message) }
 }

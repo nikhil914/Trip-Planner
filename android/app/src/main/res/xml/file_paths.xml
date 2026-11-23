@@ -3,4 +3,5 @@
 <paths>
     <files-path name="documents" path="local-docs/" />
     <files-path name="tickets" path="vault/" />
+    <cache-path name="exports" path="exports/" />
 </paths>
