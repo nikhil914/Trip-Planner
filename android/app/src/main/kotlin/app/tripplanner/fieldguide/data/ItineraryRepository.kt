@@ -6,6 +6,7 @@ import app.tripplanner.fieldguide.briefing.BriefingScheduler
 import app.tripplanner.fieldguide.logic.minuteOfDay
 import app.tripplanner.fieldguide.logic.zoneOrDefault
 import app.tripplanner.fieldguide.sync.DeviceInfo
+import app.tripplanner.fieldguide.sync.ExpenseDto
 import app.tripplanner.fieldguide.sync.OutboxWorker
 import app.tripplanner.fieldguide.sync.PairRequest
 import app.tripplanner.fieldguide.sync.SyncApi
@@ -35,6 +36,64 @@ class ItineraryRepository(
     suspend fun markBlock(id: String, status: String) {
         dao.markBlock(id, status, System.currentTimeMillis())
         schedulePush()
+    }
+
+    // ---- Money ----
+
+    private fun rowJson(row: ExpenseEntity, deletedAt: Long? = null): String =
+        api.json.encodeToString(ExpenseDto.serializer(), ExpenseDto.of(row, deletedAt))
+
+    /** Saves a new or edited spend and queues the whole row for upload. */
+    suspend fun saveExpense(row: ExpenseEntity) {
+        val stamped = row.copy(updatedAt = System.currentTimeMillis())
+        db.withTransaction {
+            dao.upsertExpenses(listOf(stamped))
+            dao.appendOutbox(listOf(OutboxEntity(entity = Entities.EXPENSE, entityId = row.id, field = "row", value = rowJson(stamped), createdAt = stamped.updatedAt)))
+        }
+        schedulePush()
+    }
+
+    suspend fun deleteExpense(row: ExpenseEntity) {
+        val now = System.currentTimeMillis()
+        db.withTransaction {
+            dao.deleteExpenses(listOf(row.id))
+            dao.appendOutbox(
+                listOf(OutboxEntity(entity = Entities.EXPENSE, entityId = row.id, field = "row", value = rowJson(row.copy(updatedAt = now), now), createdAt = now)),
+            )
+        }
+        schedulePush()
+    }
+
+    suspend fun setBudget(tripId: String, minor: Long?) {
+        val now = System.currentTimeMillis()
+        db.withTransaction {
+            dao.setBudget(minor)
+            dao.appendOutbox(listOf(OutboxEntity(entity = Entities.TRIP, entityId = tripId, field = "budget_minor", value = minor?.toString() ?: "null", createdAt = now)))
+        }
+        schedulePush()
+    }
+
+    suspend fun setSharedLedger(tripId: String, shared: Boolean) {
+        val now = System.currentTimeMillis()
+        db.withTransaction {
+            dao.setSharedLedger(shared)
+            if (!shared) dao.deleteOthersExpenses()
+            dao.appendOutbox(listOf(OutboxEntity(entity = Entities.TRIP, entityId = tripId, field = "shared_ledger", value = shared.toString(), createdAt = now)))
+        }
+        // Upload the switch at once: the other traveller's rows arrive with the next pull after it lands.
+        val s = session.current
+        if (s.canSync) OutboxWorker.enqueue(context, s.wifiOnly, delayMinutes = 0)
+    }
+
+    /** Re-applies one queued local edit on top of rows a pull just wrote. */
+    private suspend fun reapply(change: OutboxEntity, tripId: String, now: Long) {
+        if (change.entity == Entities.EXPENSE && change.field == "row") {
+            val dto = runCatching { api.json.decodeFromString(ExpenseDto.serializer(), change.value) }.getOrNull() ?: return
+            if (dto.deletedAt != null) dao.deleteExpenses(listOf(change.entityId))
+            else dao.upsertExpenses(listOf(dto.toEntity(tripId, change.entityId)))
+        } else {
+            dao.applyField(change.entityId, change.field, change.value, now)
+        }
     }
 
     private fun nowMinute(day: TripDayEntity): Int = minuteOfDay(day.dateIso, zoneOrDefault(day.timezone))
@@ -83,8 +142,12 @@ class ItineraryRepository(
             dao.deleteBlocks(delta.deleted.timelineBlocks)
             dao.deleteItems(delta.deleted.contextualItems)
             dao.deleteAttachments(delta.deleted.attachments)
+            val (gone, live) = delta.expenses.partition { it.deletedAt != null }
+            dao.deleteExpenses(gone.mapNotNull { it.id })
+            dao.upsertExpenses(live.filter { it.id != null }.map { it.toEntity(tripId) })
             // Local edits the server has not acknowledged stay on top of the rows just written.
-            dao.pendingOutbox().forEach { dao.applyField(it.entityId, it.field, it.value, now) }
+            dao.pendingOutbox().forEach { reapply(it, tripId, now) }
+            if (dao.trip(tripId)?.sharedLedger != true) dao.deleteOthersExpenses()
         }
         session.setRev(delta.rev)
 
@@ -104,6 +167,7 @@ class ItineraryRepository(
             dao.upsertDays(sample.days)
             dao.upsertBlocks(sample.blocks)
             dao.upsertItems(sample.items)
+            dao.upsertExpenses(sample.expenses)
         }
         vault.clear()
         session.demo(sample.trip.id)

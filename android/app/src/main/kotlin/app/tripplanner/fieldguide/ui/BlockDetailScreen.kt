@@ -198,6 +198,7 @@ fun BlockDetailScreen(vm: AppViewModel, trip: TripUi, id: String) {
             }
             if (facts.isNotEmpty()) FgCard { KeyFacts(facts) }
         }
+        item { BlockSpendCard(vm, b) }
 
         // 5. Warnings
         if (n.warnings.isNotEmpty()) item { Callout(Tone.WARNING, "Warnings", n.warnings, icon = Icons.Rounded.Shield) }
