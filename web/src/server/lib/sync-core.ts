@@ -290,24 +290,25 @@ interface MutationResult {
 
 const Status = z.enum(["PENDING", "DONE", "SKIPPED"]);
 const Minor = z.number().int().min(-1_000_000_000_000).max(1_000_000_000_000);
+// The phone leaves null fields out of the JSON, so every nullable field defaults to null.
 const ExpenseRow = z.object({
   kind: z.enum(["SPEND", "ATM", "EXCHANGE", "OPENING_CASH", "CASH_COUNT"]),
-  day_id: z.string().max(80).nullable(),
-  block_id: z.string().max(80).nullable(),
+  day_id: z.string().max(80).nullable().default(null),
+  block_id: z.string().max(80).nullable().default(null),
   occurred_at: z.number().int().min(0),
   amount_minor: Minor,
   currency: z.string().regex(/^[A-Z]{3}$/),
   rate_to_home: z.number().positive().finite(),
   home_minor: Minor,
-  billed_home_minor: Minor.nullable(),
+  billed_home_minor: Minor.nullable().default(null),
   method: z.enum(["CASH", "CARD", "OTHER"]),
   category: z.string().min(1).max(40),
-  merchant: z.string().max(200).nullable(),
-  note: z.string().max(1000).nullable(),
+  merchant: z.string().max(200).nullable().default(null),
+  note: z.string().max(1000).nullable().default(null),
   prepaid: z.boolean(),
-  paid_by: z.enum(["A", "B", "SHARED"]).nullable(),
+  paid_by: z.enum(["A", "B", "SHARED"]).nullable().default(null),
   updated_at: z.number().int().min(0),
-  deleted_at: z.number().int().min(0).nullable(),
+  deleted_at: z.number().int().min(0).nullable().default(null),
 });
 const Budget = z.number().int().min(0).max(1_000_000_000_000).nullable();
 const StartMinute = z.number().int().min(0).max(1439);
