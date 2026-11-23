@@ -34,6 +34,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -66,7 +67,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
-import app.tripplanner.fieldguide.FieldGuideApp
 import app.tripplanner.fieldguide.logic.BlockKind
 import app.tripplanner.fieldguide.logic.dayLabel
 import app.tripplanner.fieldguide.logic.hhmm
@@ -184,13 +184,20 @@ fun TicketModal(m: Modal.Ticket, onDismiss: () -> Unit) {
         }
         return
     }
+    val context = LocalContext.current
     val pager = rememberPagerState(initialPage = m.start.coerceIn(0, m.files.size - 1)) { m.files.size }
     WhiteModal(onDismiss) {
         Column(Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 56.dp, top = 12.dp, bottom = 8.dp)) {
+            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 56.dp, top = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 val file = m.files[pager.currentPage]
-                Text(file.attachment.fileName, color = Ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                Text(if (m.files.size > 1) "File ${pager.currentPage + 1} of ${m.files.size} · swipe for the next" else "Swipe down the page to scroll", color = Grey, fontSize = 13.sp)
+                Column(Modifier.weight(1f)) {
+                    Text(file.fileName, color = Ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    val where = if (file.localOnly) "Only on this phone · " else ""
+                    Text(where + if (m.files.size > 1) "File ${pager.currentPage + 1} of ${m.files.size} · swipe for the next" else "Swipe down the page to scroll", color = Grey, fontSize = 13.sp)
+                }
+                IconButton(onClick = { openExternally(context, file) }) {
+                    Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = "Open in another app", tint = Ink)
+                }
             }
             HorizontalPager(state = pager, modifier = Modifier.weight(1f)) { page -> FilePages(m.files[page]) }
         }
@@ -200,10 +207,9 @@ fun TicketModal(m: Modal.Ticket, onDismiss: () -> Unit) {
 @Composable
 private fun FilePages(file: FileUi) {
     val context = LocalContext.current
-    val vault = (context.applicationContext as FieldGuideApp).graph.vault
     val width = context.resources.displayMetrics.widthPixels.coerceAtMost(1440)
-    val pages by produceState<List<Bitmap>?>(initialValue = null, file.attachment.id) {
-        value = renderFile(vault.file(file.attachment.id), file.attachment.mimeType, width)
+    val pages by produceState<List<Bitmap>?>(initialValue = null, file.id) {
+        value = renderFile(file.path, file.mimeType, width)
     }
     // Double tap zooms; the zoomed page scrolls sideways natively, so vertical scrolling keeps working.
     var zoomed by remember { mutableStateOf(false) }
@@ -225,7 +231,7 @@ private fun FilePages(file: FileUi) {
                 Column(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
                     Image(
                         bitmap.asImageBitmap(),
-                        contentDescription = "${file.attachment.fileName}, page ${i + 1} of ${loaded.size}. Double tap to zoom.",
+                        contentDescription = "${file.fileName}, page ${i + 1} of ${loaded.size}. Double tap to zoom.",
                         modifier = Modifier.width(if (zoomed) screenWidth * 2.5f else screenWidth),
                         contentScale = ContentScale.FillWidth,
                     )

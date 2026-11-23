@@ -1,6 +1,7 @@
 package app.tripplanner.fieldguide.ui
 
 import android.app.Application
+import android.net.Uri
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -11,6 +12,8 @@ import app.tripplanner.fieldguide.data.AttachmentEntity
 import app.tripplanner.fieldguide.data.BlockWithContext
 import app.tripplanner.fieldguide.data.Category
 import app.tripplanner.fieldguide.data.ContextualItemEntity
+import app.tripplanner.fieldguide.data.LocalDoc
+import app.tripplanner.fieldguide.data.LocalDocException
 import app.tripplanner.fieldguide.data.PairPhase
 import app.tripplanner.fieldguide.data.ShiftPreview
 import app.tripplanner.fieldguide.data.Status
@@ -29,6 +32,7 @@ import app.tripplanner.fieldguide.logic.stays
 import app.tripplanner.fieldguide.logic.todayIso
 import app.tripplanner.fieldguide.logic.zoneOrDefault
 import app.tripplanner.fieldguide.sync.HttpStatusException
+import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -47,7 +51,19 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-data class FileUi(val attachment: AttachmentEntity, val ready: Boolean)
+/**
+ * A ticket or document on a plan. [localOnly] files were linked on this phone from its own storage and
+ * are never uploaded; the rest come from the planner and download during sync.
+ */
+data class FileUi(
+    val id: String,
+    val fileName: String,
+    val mimeType: String,
+    val sizeBytes: Long,
+    val path: File,
+    val ready: Boolean,
+    val localOnly: Boolean,
+)
 
 /** One block with everything a screen needs: the row, its parsed notes and flags, linked items and files. */
 data class BlockUi(
@@ -78,6 +94,8 @@ data class TripUi(
     val stays: List<Stay> = emptyList(),
     val colliding: Set<String> = emptySet(),
     val byId: Map<String, BlockUi> = emptyMap(),
+    /** Documents linked on this phone to a plan that has since been removed in the planner. */
+    val orphanDocs: List<FileUi> = emptyList(),
 ) {
     val scheduled: List<BlockUi> get() = days.flatMap { it.blocks }
     val files: List<FileUi> get() = byId.values.flatMap { it.files }
@@ -131,8 +149,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         .distinctUntilChanged()
         .flatMapLatest { tripId ->
             if (tripId == null) flowOf(TripUi(loaded = true))
-            else combine(dao.observeTrip(tripId), dao.observeDays(tripId), dao.observeBlocks(tripId), dao.observeItems(tripId)) { t, d, b, i ->
-                build(t, d, b, i)
+            else combine(dao.observeTrip(tripId), dao.observeDays(tripId), dao.observeBlocks(tripId), dao.observeItems(tripId), graph.localDocs.docs) { t, d, b, i, docs ->
+                build(t, d, b, i, docs.filter { it.tripId == tripId })
             }.flowOn(Dispatchers.Default)
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TripUi())
@@ -162,9 +180,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { graph.notices.collect { notices.emit(Notice(it)) } }
     }
 
-    private fun build(trip: TripEntity?, days: List<TripDayEntity>, rows: List<BlockWithContext>, items: List<ContextualItemEntity>): TripUi {
-        val dayById = days.associateBy { it.id }
+    private fun fileUi(a: AttachmentEntity): FileUi {
         val vault = graph.vault
+        return FileUi(a.id, a.fileName, a.mimeType, a.sizeBytes, vault.file(a.id), vault.isReady(a), localOnly = false)
+    }
+
+    private fun fileUi(d: LocalDoc): FileUi {
+        val docs = graph.localDocs
+        return FileUi(d.id, d.fileName, d.mimeType, d.sizeBytes, docs.file(d.id), docs.isReady(d), localOnly = true)
+    }
+
+    private fun build(
+        trip: TripEntity?,
+        days: List<TripDayEntity>,
+        rows: List<BlockWithContext>,
+        items: List<ContextualItemEntity>,
+        docs: List<LocalDoc>,
+    ): TripUi {
+        val dayById = days.associateBy { it.id }
+        val docsByBlock = docs.sortedBy { it.addedAt }.groupBy { it.blockId }
         val blocks = rows.map { r ->
             val b = r.block
             val day = b.dayId?.let(dayById::get)
@@ -173,7 +207,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 durationMinutes = b.durationMinutes, isFixed = b.isFixedTime, blockType = b.blockType, title = b.title,
                 notes = b.subtitleOrTip, bookingRef = b.bookingRef, costLocal = b.estimatedCostLocal, status = b.status,
             )
-            BlockUi(b, plan, r.items, r.attachments.map { FileUi(it, vault.isReady(it)) }, day)
+            BlockUi(b, plan, r.items, r.attachments.map { fileUi(it) } + docsByBlock[b.id].orEmpty().map { fileUi(it) }, day)
         }
         val scheduled = blocks.filter { it.day != null && it.e.startMinute != null }
         val dayUis = days.sortedBy { it.dayNumber }.map { d ->
@@ -197,6 +231,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             stays = stays(dayUis.flatMap { it.plans }),
             colliding = colliding,
             byId = blocks.associateBy { it.id },
+            orphanDocs = docs.filter { d -> rows.none { it.block.id == d.blockId } }.map { fileUi(it) },
         )
     }
 
@@ -266,6 +301,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun unpair() {
         viewModelScope.launch {
             repo.unpair()
+            graph.localDocs.clear()
             prefs.clearTicks()
             prefs.setPrimerDone(false)
             sync.value = SyncUi()
@@ -343,6 +379,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Ticks on list lines stay on this phone. */
+    // ---- Documents linked on this phone ----
+
+    /** Copies a picked PDF or photo into app storage and links it to the plan. Nothing is uploaded. */
+    fun linkDocument(blockId: String, uri: Uri, replacing: String? = null) {
+        val tripId = session.value.tripId ?: return say("Pair or load a trip first.")
+        viewModelScope.launch {
+            try {
+                graph.localDocs.add(tripId, blockId, uri, replacing)
+                say(if (replacing != null) "Document replaced." else "Saved on this phone. It opens offline.")
+            } catch (e: LocalDocException) {
+                say(e.message ?: "That file can't be used.")
+            } catch (_: Exception) {
+                say("Couldn't save that file. Try again.")
+            }
+        }
+    }
+
+    fun removeDocument(id: String) {
+        viewModelScope.launch {
+            graph.localDocs.remove(id)
+            say("Removed from this phone.")
+        }
+    }
+
     fun tick(blockId: String, key: String, ticked: Boolean) = prefs.setTick("$blockId|$key", ticked)
 
     suspend fun previewShift(dayId: String, delta: Int): ShiftPreview? {

@@ -12,6 +12,7 @@ import androidx.compose.material.icons.rounded.ConfirmationNumber
 import androidx.compose.material.icons.rounded.Directions
 import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.core.content.FileProvider
 import app.tripplanner.fieldguide.logic.BlockKind
 import app.tripplanner.fieldguide.logic.Health
 import app.tripplanner.fieldguide.logic.amount
@@ -21,10 +22,32 @@ import app.tripplanner.fieldguide.nav.openInGoogleMaps
 
 data class QuickAction(val label: String, val icon: ImageVector, val run: () -> Unit)
 
-fun ticketTitles(files: List<FileUi>): List<String> = files.map { it.attachment.fileName }
+fun ticketTitles(files: List<FileUi>): List<String> = files.map { it.fileName }
 
 fun openTicket(nav: Nav, b: BlockUi, start: Int = 0) {
     nav.modal = Modal.Ticket(b.files, ticketTitles(b.files), start)
+}
+
+/** Hands one file to a PDF or image app, read-only, for features the built-in viewer lacks (search, long files). */
+fun openExternally(context: Context, file: FileUi) {
+    if (!file.ready) {
+        Toast.makeText(context, "This file isn't on the phone yet", Toast.LENGTH_SHORT).show()
+        return
+    }
+    val uri = try {
+        FileProvider.getUriForFile(context, "${context.packageName}.files", file.path, file.fileName)
+    } catch (_: IllegalArgumentException) {
+        Toast.makeText(context, "This file can't be shared", Toast.LENGTH_SHORT).show()
+        return
+    }
+    val intent = Intent(Intent.ACTION_VIEW)
+        .setDataAndType(uri, file.mimeType)
+        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+    try {
+        context.startActivity(Intent.createChooser(intent, "Open with").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    } catch (_: ActivityNotFoundException) {
+        Toast.makeText(context, if (file.mimeType == "application/pdf") "No PDF app on this phone" else "No app can open this file", Toast.LENGTH_SHORT).show()
+    }
 }
 
 fun navigateTo(context: Context, b: BlockUi) {
