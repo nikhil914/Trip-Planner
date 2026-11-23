@@ -14,6 +14,8 @@ data class SessionState(
     val wifiOnly: Boolean = false,
     val revoked: Boolean = false,
     val demo: Boolean = false,
+    /** Wall-clock millis of the last successful pull, 0 if never. */
+    val lastSyncAt: Long = 0,
 ) {
     val hasTrip: Boolean get() = tripId != null
     val canSync: Boolean get() = !demo && !revoked && serverUrl != null && token != null && tripId != null
@@ -38,6 +40,7 @@ class Session(context: Context) {
         wifiOnly = prefs.getBoolean(KEY_WIFI, false),
         revoked = prefs.getBoolean(KEY_REVOKED, false),
         demo = prefs.getBoolean(KEY_DEMO, false),
+        lastSyncAt = prefs.getLong(KEY_SYNCED, 0),
     )
 
     private fun write(next: SessionState) {
@@ -49,6 +52,7 @@ class Session(context: Context) {
             .putBoolean(KEY_WIFI, next.wifiOnly)
             .putBoolean(KEY_REVOKED, next.revoked)
             .putBoolean(KEY_DEMO, next.demo)
+            .putLong(KEY_SYNCED, next.lastSyncAt)
             .apply()
         _state.value = next
     }
@@ -58,7 +62,7 @@ class Session(context: Context) {
 
     fun demo(tripId: String) = write(SessionState(tripId = tripId, demo = true, wifiOnly = current.wifiOnly))
 
-    fun setRev(rev: Long) = write(current.copy(rev = rev))
+    fun setRev(rev: Long) = write(current.copy(rev = rev, lastSyncAt = System.currentTimeMillis()))
 
     fun setWifiOnly(value: Boolean) = write(current.copy(wifiOnly = value))
 
@@ -75,5 +79,6 @@ class Session(context: Context) {
         const val KEY_WIFI = "wifi_only"
         const val KEY_REVOKED = "revoked"
         const val KEY_DEMO = "demo"
+        const val KEY_SYNCED = "last_sync_at"
     }
 }

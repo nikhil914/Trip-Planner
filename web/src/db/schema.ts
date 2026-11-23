@@ -33,6 +33,10 @@ export const trips = sqliteTable("trips", {
   startDate: text("start_date").notNull(),
   endDate: text("end_date").notNull(),
   wakeMinute: integer("wake_minute").notNull().default(450),
+  // Trip budget in minor units of the local currency (4800 = 48.00). Set from the phone.
+  budgetMinor: integer("budget_minor"),
+  // Off: each phone sees only the spends it logged. On: both travellers see every spend.
+  sharedLedger: integer("shared_ledger", { mode: "boolean" }).notNull().default(false),
   rev: integer("rev").notNull().default(0),
   metaRev: integer("meta_rev").notNull().default(0),
   updatedAt: integer("updated_at").notNull(),
@@ -131,7 +135,45 @@ export const attachments = sqliteTable(
   (t) => [primaryKey({ columns: [t.tripId, t.id] }), index("attachments_rev").on(t.tripId, t.rev), index("attachments_block").on(t.tripId, t.blockId)],
 );
 
-export const ENTITY = { day: "trip_day", block: "timeline_block", item: "contextual_item", attachment: "attachment" } as const;
+// Money logged on a phone: spends, ATM withdrawals, exchanges and cash counts. Only kind SPEND counts as spend.
+// The phone makes the id. `owner` is the install id of the phone that logged it; only that phone can change it.
+export const expenses = sqliteTable(
+  "expenses",
+  {
+    tripId: tripId(),
+    id: text("id").notNull(),
+    owner: text("owner").notNull(),
+    kind: text("kind", { enum: ["SPEND", "ATM", "EXCHANGE", "OPENING_CASH", "CASH_COUNT"] }).notNull(),
+    dayId: text("day_id"),
+    blockId: text("block_id"),
+    occurredAt: integer("occurred_at").notNull(),
+    amountMinor: integer("amount_minor").notNull(),
+    currency: text("currency").notNull(),
+    rateToHome: real("rate_to_home").notNull(),
+    homeMinor: integer("home_minor").notNull(),
+    billedHomeMinor: integer("billed_home_minor"),
+    method: text("method", { enum: ["CASH", "CARD", "OTHER"] }).notNull(),
+    category: text("category").notNull(),
+    merchant: encText("merchant"),
+    note: encText("note"),
+    prepaid: integer("prepaid", { mode: "boolean" }).notNull(),
+    paidBy: text("paid_by"),
+    clientUpdatedAt: integer("client_updated_at").notNull(),
+    deletedAt: integer("deleted_at"),
+    rev: integer("rev").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.tripId, t.id] }), index("expenses_rev").on(t.tripId, t.rev)],
+);
+
+export const ENTITY = {
+  day: "trip_day",
+  block: "timeline_block",
+  item: "contextual_item",
+  attachment: "attachment",
+  trip: "trip",
+  expense: "expense",
+} as const;
 export type EntityName = (typeof ENTITY)[keyof typeof ENTITY];
 
 // A deleted row leaves its id here so a phone that still holds it learns to drop it.

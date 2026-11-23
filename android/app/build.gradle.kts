@@ -83,6 +83,8 @@ dependencies {
     implementation(libs.compose.ui)
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
+    // Vector icons only; R8 strips every icon that is not referenced.
+    implementation(libs.compose.icons.extended)
 
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)

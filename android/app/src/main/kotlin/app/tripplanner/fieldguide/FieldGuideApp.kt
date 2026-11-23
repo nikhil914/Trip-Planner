@@ -3,7 +3,9 @@ package app.tripplanner.fieldguide
 import android.app.Application
 import app.tripplanner.fieldguide.data.FieldDb
 import app.tripplanner.fieldguide.data.ItineraryRepository
+import app.tripplanner.fieldguide.data.LocalDocs
 import app.tripplanner.fieldguide.data.Session
+import app.tripplanner.fieldguide.data.UiPrefs
 import app.tripplanner.fieldguide.data.Vault
 import app.tripplanner.fieldguide.sync.SyncApi
 import kotlinx.coroutines.CoroutineScope
@@ -17,8 +19,10 @@ class AppGraph(app: Application) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val db: FieldDb = FieldDb.open(app)
     val session = Session(app)
+    val uiPrefs = UiPrefs(app)
     val api = SyncApi(session)
     val vault = Vault(app, api)
+    val localDocs = LocalDocs(app)
     val repository = ItineraryRepository(app, db, api, session, vault)
 
     /** One-line messages for the user, shown as a snackbar when the app is open. */
