@@ -31,6 +31,14 @@ abstract class ItineraryDao {
     @Query("SELECT * FROM timeline_blocks WHERE day_id = :dayId AND start_minute IS NOT NULL ORDER BY start_minute, sort_order")
     abstract fun observeAgenda(dayId: String): Flow<List<BlockWithContext>>
 
+    /** Every block of the trip, scheduled or not, with its linked items and files. A trip is small enough to hold in memory. */
+    @Transaction
+    @Query("SELECT * FROM timeline_blocks WHERE trip_id = :tripId ORDER BY start_minute, sort_order")
+    abstract fun observeBlocks(tripId: String): Flow<List<BlockWithContext>>
+
+    @Query("SELECT * FROM contextual_items WHERE trip_id = :tripId ORDER BY title")
+    abstract fun observeItems(tripId: String): Flow<List<ContextualItemEntity>>
+
     @Query("SELECT * FROM contextual_items WHERE day_id = :dayId AND category = 'MORNING_PREP' ORDER BY title")
     abstract fun observePrep(dayId: String): Flow<List<ContextualItemEntity>>
 

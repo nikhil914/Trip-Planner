@@ -15,7 +15,7 @@ object SampleTrip {
     private const val TRIP = "demo-trip"
 
     private fun block(
-        id: String, day: String, start: Int, minutes: Int, title: String,
+        id: String, day: String?, start: Int?, minutes: Int, title: String,
         tip: String? = null, lat: Double? = null, lng: Double? = null, cost: Double? = null,
         fixed: Boolean = false, type: String = "ACTIVITY", ref: String? = null,
         closes: Int? = null, local: String? = null, phonetic: String? = null,
@@ -51,15 +51,30 @@ object SampleTrip {
         )
 
         val blocks = listOf(
-            block("demo-narikala", d1, 600, 90, "Narikala Fortress", "Take the cable car from Rike Park", 41.688, 44.8086, 5.0,
-                local = "ნარიყალა", phonetic = "na-ri-KA-la"),
-            block("demo-baths", d1, 720, 90, "Abanotubani sulphur baths", lat = 41.6884, lng = 44.811, cost = 80.0,
-                fixed = true, ref = "Room 5, 12:00", local = "აბანოთუბანი", phonetic = "a-ba-no-TU-ba-ni"),
-            block("demo-funicular", d1, 900, 120, "Mtatsminda funicular", lat = 41.6946, lng = 44.7866, cost = 10.0),
-            block("demo-market", d2, 630, 75, "Dry Bridge Market", lat = 41.7006, lng = 44.804, closes = 1020,
+            block("demo-narikala", d1, 600, 90, "Narikala Fortress",
+                "10:00 walk to Rike Park (~10 min).\n10:20 cable car up, ~2.5 GEL each way.\nPrecautions: the cable car closes in strong wind. If closed: taxi to the car park (8–15 GEL).",
+                41.688, 44.8086, 5.0, local = "ნარიყალა", phonetic = "na-ri-KA-la"),
+            block("demo-baths", d1, 720, 90, "Abanotubani sulphur baths",
+                "Private room, booked for 12:00.\nBring flip-flops and a towel.\nNON-REFUNDABLE.\nMax 15 min in the hot water at a time.",
+                lat = 41.6884, lng = 44.811, cost = 80.0, fixed = true, ref = "Ref [Booking no.] · Room 5",
+                local = "აბანოთუბანი", phonetic = "a-ba-no-TU-ba-ni"),
+            block("demo-funicular", d1, 900, 120, "Mtatsminda funicular", "Rain plan: the National Museum instead.", lat = 41.6946, lng = 44.7866, cost = 10.0),
+            block("demo-checkin", d1, 1110, 30, "Check in: Demo Guesthouse",
+                "[Street address], Tbilisi. Phone [Hotel phone].\nPAY AT THE PROPERTY, CASH ONLY: about GEL 60.\nAsk for: late breakfast, bag storage.",
+                lat = 41.69, lng = 44.80, cost = 60.0, fixed = true, type = "HOTEL", ref = "Booking.com [Booking no.]"),
+            block("demo-market", d2, 630, 75, "Dry Bridge Market", "Scam warning: agree prices before you pay.", lat = 41.7006, lng = 44.804, closes = 1020,
                 local = "მშრალი ხიდი", phonetic = "MSHRA-li KHI-di"),
-            block("demo-sameba", d2, 780, 60, "Holy Trinity Cathedral", lat = 41.6977, lng = 44.8166),
-            block("demo-train", d3, 490, 330, "Train to Kutaisi", cost = 25.0, fixed = true, type = "TRANSIT", ref = "Coach 3, seat 14"),
+            block("demo-tour", d2, 780, 240, "Wine day tour (NOT BOOKED)",
+                "BOOK BEFORE YOU FLY: group tour from USD 20 pp.\n~13:30 Sighnaghi walls · ~15:00 winery tasting\nNot drinking: pick a culture tour instead.", cost = 60.0),
+            block("demo-checkout", d3, 420, 15, "Check out: Demo Guesthouse", "Take everything.", fixed = true, type = "HOTEL", ref = "Booking.com [Booking no.]"),
+            block("demo-train", d3, 490, 330, "Train 800 Tbilisi → Kutaisi", "07:30 taxi to the station. Arrive by 08:00.\nShow the QR e-ticket and carry the passport used for booking.",
+                cost = 25.0, fixed = true, type = "TRANSIT", ref = "Carriage 3 · Seat 14 (Traveller A) · Traveller B: ticket not yet shared"),
+            block("demo-list-fly", null, null, 90, "✅ Before you fly",
+                "1. Trains: done.\n2. Book the wine tour.\n3. Save hotel addresses offline.\n4. Online check-in."),
+            block("demo-list-pack", null, null, 90, "🎒 Packing list", "Clothes: warm jacket, gloves, beanie.\nTech: power bank, plug adapter."),
+            block("demo-list-sos", null, null, 90, "🆘 Emergency, insurance and safety",
+                "Emergency: 112.\nInsurance: policy [Policy no. A]. 24/7 hotline +000 00 000 000 (placeholder).\nSafety:\n• Taxi scams: use an app taxi.\n• Pickpockets: busy squares and the metro."),
+            block("demo-list-food", null, null, 90, "🍽️ Food and phrases", "Veg: khachapuri, lobio, badrijani.\nPhrases: gamarjoba (hello), madloba (thank you)."),
         )
 
         val items = listOf(
