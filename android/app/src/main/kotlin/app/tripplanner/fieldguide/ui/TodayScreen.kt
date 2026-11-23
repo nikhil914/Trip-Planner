@@ -243,7 +243,10 @@ private fun TripDayToday(vm: AppViewModel, trip: TripUi, day: DayUi) {
                     timeline(vm, trip, day, nowMinute)
                 }
                 item(key = "eod") {
-                    Box(Modifier.padding(FgDims.margin)) { EndOfDayCard(trip, day, nextDay) { nav.push(Route.Day(it)) } }
+                    Column(Modifier.padding(FgDims.margin), verticalArrangement = Arrangement.spacedBy(FgDims.gap)) {
+                        SpendCatchUp(vm, day)
+                        EndOfDayCard(trip, day, nextDay) { nav.push(Route.Day(it)) }
+                    }
                 }
             }
         }
@@ -347,8 +350,10 @@ private fun BriefingCard(vm: AppViewModel, trip: TripUi, day: DayUi, initiallyOp
     val spend = daySpend(plans)
     val warnings = warningsToday(plans)
     val lb = leaveBy(plans)
+    val nav = LocalNav.current
 
     FgCard {
+        BudgetBriefingLine(vm) { nav.push(Route.Money) }
         Expandable("Morning briefing", initiallyOpen = initiallyOpen) {
             lb?.let {
                 BriefRow(Icons.Rounded.Schedule, "Leave by ${it.minute.hhmm()}", "${it.block.displayTitle} at ${it.block.startMinute?.hhmm()}")

@@ -12,6 +12,7 @@ import app.tripplanner.fieldguide.data.AttachmentEntity
 import app.tripplanner.fieldguide.data.BlockWithContext
 import app.tripplanner.fieldguide.data.Category
 import app.tripplanner.fieldguide.data.ContextualItemEntity
+import app.tripplanner.fieldguide.data.ExpenseEntity
 import app.tripplanner.fieldguide.data.LocalDoc
 import app.tripplanner.fieldguide.data.LocalDocException
 import app.tripplanner.fieldguide.data.PairPhase
@@ -21,11 +22,15 @@ import app.tripplanner.fieldguide.data.ThemeMode
 import app.tripplanner.fieldguide.data.TimelineBlockEntity
 import app.tripplanner.fieldguide.data.TripDayEntity
 import app.tripplanner.fieldguide.data.TripEntity
+import app.tripplanner.fieldguide.logic.MoneyKind
+import app.tripplanner.fieldguide.logic.PayMethod
 import app.tripplanner.fieldguide.logic.PlanBlock
 import app.tripplanner.fieldguide.logic.Slot
 import app.tripplanner.fieldguide.logic.Stay
 import app.tripplanner.fieldguide.logic.TripList
 import app.tripplanner.fieldguide.logic.collidingIds
+import app.tripplanner.fieldguide.logic.moneyLabel
+import app.tripplanner.fieldguide.logic.spendsCsv
 import app.tripplanner.fieldguide.logic.minuteOfDay
 import app.tripplanner.fieldguide.logic.parseList
 import app.tripplanner.fieldguide.logic.stays
@@ -34,6 +39,8 @@ import app.tripplanner.fieldguide.logic.zoneOrDefault
 import app.tripplanner.fieldguide.sync.HttpStatusException
 import java.io.File
 import java.io.IOException
+import java.time.Instant
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
@@ -116,7 +123,23 @@ enum class SyncRun { IDLE, SYNCING, FAILED }
 
 data class SyncUi(val run: SyncRun = SyncRun.IDLE, val message: String? = null)
 
-data class Notice(val text: String, val action: String? = null, val onAction: (() -> Unit)? = null)
+/** A snackbar line. [action2] is a second, optional button shown before the main one. */
+data class Notice(
+    val text: String,
+    val action: String? = null,
+    val onAction: (() -> Unit)? = null,
+    val action2: String? = null,
+    val onAction2: (() -> Unit)? = null,
+)
+
+/** Opens the quick-add sheet. [editId] edits a saved row; otherwise a new row of [kind] starts from the given values. */
+data class QuickAddRequest(
+    val blockId: String? = null,
+    val editId: String? = null,
+    val kind: String = MoneyKind.SPEND,
+    val amountMinor: Long? = null,
+    val suggestPlan: Boolean = true,
+)
 
 data class PairingOffer(val serverUrl: String, val code: String)
 
@@ -154,6 +177,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }.flowOn(Dispatchers.Default)
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TripUi())
+
+    val money: StateFlow<MoneyUi> = session
+        .map { it.tripId }
+        .distinctUntilChanged()
+        .flatMapLatest { tripId ->
+            if (tripId == null) flowOf(MoneyUi(loaded = true))
+            else combine(trip, dao.observeExpenses(tripId), dao.observeUnsentExpenseIds()) { t, rows, unsent ->
+                buildMoney(t, rows, unsent.toSet())
+            }.flowOn(Dispatchers.Default)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MoneyUi())
+
+    val quickAdd = MutableStateFlow<QuickAddRequest?>(null)
 
     // ---- App lock ----
 
@@ -373,12 +409,117 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             if (undoable && before != status) {
                 val title = trip.value.byId[id]?.plan?.displayTitle.orEmpty()
                 val verb = if (status == Status.DONE) "Done" else if (status == Status.SKIPPED) "Skipped" else "Reopened"
-                notices.emit(Notice("$verb: $title", "Undo") { markBlock(id, before) })
+                val logSpend = status == Status.DONE
+                notices.emit(
+                    Notice(
+                        "$verb: $title", "Undo", { markBlock(id, before) },
+                        action2 = if (logSpend) "Log spend" else null,
+                        onAction2 = if (logSpend) ({ openQuickAdd(QuickAddRequest(blockId = id)) }) else null,
+                    ),
+                )
             }
         }
     }
 
-    /** Ticks on list lines stay on this phone. */
+    // ---- Money ----
+
+    fun openQuickAdd(request: QuickAddRequest = QuickAddRequest()) {
+        quickAdd.value = request
+    }
+
+    fun closeQuickAdd() {
+        quickAdd.value = null
+    }
+
+    fun newExpenseId(): String = UUID.randomUUID().toString()
+
+    /** Saves a new or edited row. Undo removes a new row or puts the old version back. */
+    fun saveExpense(row: ExpenseEntity) {
+        val before = money.value.row(row.id)
+        viewModelScope.launch {
+            repo.saveExpense(row)
+            val what = when (row.kind) {
+                MoneyKind.ATM -> "Cash added"
+                MoneyKind.OPENING_CASH -> "Cash added"
+                MoneyKind.EXCHANGE -> "Exchange logged"
+                else -> if (before == null) "Logged" else "Updated"
+            }
+            notices.emit(
+                Notice("$what ${moneyLabel(row.amountMinor, row.currency)}", "Undo") {
+                    viewModelScope.launch { if (before == null) repo.deleteExpense(row) else repo.saveExpense(before) }
+                },
+            )
+        }
+    }
+
+    fun deleteExpense(id: String) {
+        val row = money.value.row(id) ?: return
+        if (!row.mine) return say("Only the phone that logged it can delete it.")
+        viewModelScope.launch {
+            repo.deleteExpense(row)
+            notices.emit(Notice("Deleted ${row.merchant ?: "spend"} ${moneyLabel(row.amountMinor, row.currency)}", "Undo") { saveExpense(row) })
+        }
+    }
+
+    fun setBudget(minor: Long?) {
+        val tripId = session.value.tripId ?: return
+        viewModelScope.launch { repo.setBudget(tripId, minor) }
+    }
+
+    fun setSharedLedger(shared: Boolean) {
+        val tripId = session.value.tripId ?: return
+        viewModelScope.launch {
+            repo.setSharedLedger(tripId, shared)
+            say(if (shared) "Shared. Both phones show every spend after their next sync." else "Each phone now shows only its own spends.")
+        }
+    }
+
+    /**
+     * Sets the pouch to what is really in the wallet. The gap is logged as one "Unlogged cash" spend, so the total
+     * stays right without listing every coin. More cash than expected is logged as a cash adjustment only.
+     */
+    fun countCash(countedMinor: Long) {
+        val m = money.value
+        val tripId = session.value.tripId ?: return
+        val gap = countedMinor - m.pouchMinor
+        if (gap == 0L) return say("The cash pouch already matches.")
+        val now = System.currentTimeMillis()
+        val dayId = trip.value.today()?.day?.id
+        fun row(kind: String, minor: Long, category: String, where: String) = ExpenseEntity(
+            id = newExpenseId(), tripId = tripId, mine = true, kind = kind, dayId = dayId, blockId = null, occurredAt = now,
+            amountMinor = minor, currency = m.local, rateToHome = m.rate, homeMinor = Math.round(minor * m.rate), billedHomeMinor = null,
+            method = PayMethod.CASH, category = category, merchant = where, note = null, prepaid = false, paidBy = null, updatedAt = now,
+        )
+        viewModelScope.launch {
+            if (gap < 0) {
+                // The pouch drops by the gap through the spend; the count row only records that a count happened.
+                repo.saveExpense(row(MoneyKind.SPEND, -gap, "OTHER", "Unlogged cash"))
+                say("Logged ${moneyLabel(-gap, m.local)} of unlogged cash.")
+            } else {
+                repo.saveExpense(row(MoneyKind.CASH_COUNT, gap, "OTHER", "Cash count"))
+                say("Added ${moneyLabel(gap, m.local)} to the cash pouch.")
+            }
+        }
+    }
+
+    /** Writes the trip's spends to a CSV in the cache and returns it for the share sheet. */
+    suspend fun exportCsv(): File? {
+        val m = money.value
+        val t = trip.value
+        if (m.rows.isEmpty()) return null
+        val zone = zoneOrDefault(t.days.firstOrNull()?.day?.timezone)
+        val csv = spendsCsv(
+            m.spends,
+            m.home,
+            time = { Instant.ofEpochMilli(it.occurredAt).atZone(zone).toLocalDateTime().toString().take(16).replace('T', ' ') },
+            place = { s -> s.blockId?.let { t.byId[it]?.plan?.displayTitle } },
+        )
+        return kotlinx.coroutines.withContext(Dispatchers.IO) {
+            val dir = File(getApplication<Application>().cacheDir, "exports").apply { mkdirs() }
+            File(dir, "spends.csv").apply { writeText(csv) }
+        }
+    }
+
     // ---- Documents linked on this phone ----
 
     /** Copies a picked PDF or photo into app storage and links it to the plan. Nothing is uploaded. */

@@ -10,6 +10,7 @@ object SampleTrip {
         val days: List<TripDayEntity>,
         val blocks: List<TimelineBlockEntity>,
         val items: List<ContextualItemEntity>,
+        val expenses: List<ExpenseEntity> = emptyList(),
     )
 
     private const val TRIP = "demo-trip"
@@ -47,7 +48,7 @@ object SampleTrip {
         val trip = TripEntity(
             id = TRIP, title = "Tbilisi long weekend (demo)", destinationTimezone = zone.id, homeCurrency = "USD",
             localCurrency = "GEL", exchangeRate = 0.37, startDate = days.first().dateIso, endDate = days.last().dateIso,
-            wakeMinute = 450, updatedAt = 0,
+            wakeMinute = 450, updatedAt = 0, budgetMinor = 1_200_00,
         )
 
         val blocks = listOf(
@@ -88,6 +89,22 @@ object SampleTrip {
             item("demo-towel", Category.PREP, "Pack a towel for the baths", d1),
             item("demo-passport", Category.PREP, "Carry physical passport", d3),
         )
-        return Bundle(trip, days, blocks, items)
+        fun at(dateIso: String?, minute: Int): Long =
+            LocalDate.parse(dateIso ?: days.first().dateIso).atStartOfDay(zone).plusMinutes(minute.toLong()).toInstant().toEpochMilli()
+        fun spend(id: String, day: String?, minute: Int, minor: Long, kind: String, method: String, category: String, where: String?, block: String? = null, prepaid: Boolean = false) =
+            ExpenseEntity(
+                id = id, tripId = TRIP, mine = true, kind = kind, dayId = day, blockId = block,
+                occurredAt = at(days.firstOrNull { it.id == day }?.dateIso, minute) - if (day == null) 86_400_000L * 20 else 0,
+                amountMinor = minor, currency = "GEL", rateToHome = trip.exchangeRate, homeMinor = Math.round(minor * trip.exchangeRate),
+                billedHomeMinor = null, method = method, category = category, merchant = where, note = null, prepaid = prepaid,
+                paidBy = null, updatedAt = 0,
+            )
+        val expenses = listOf(
+            spend("demo-x-train", null, 600, 50_00, "SPEND", "CARD", "TRANSPORT", "Georgian Railway", "demo-train", prepaid = true),
+            spend("demo-x-cash", d1, 480, 150_00, "OPENING_CASH", "CASH", "OTHER", "Cash brought from home"),
+            spend("demo-x-coffee", d1, 545, 9_00, "SPEND", "CARD", "FOOD", "Coffee near Rike Park"),
+            spend("demo-x-cable", d1, 625, 5_00, "SPEND", "CASH", "TRANSPORT", "Cable car", "demo-narikala"),
+        )
+        return Bundle(trip, days, blocks, items, expenses)
     }
 }

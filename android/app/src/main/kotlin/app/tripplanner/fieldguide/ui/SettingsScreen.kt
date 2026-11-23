@@ -33,6 +33,7 @@ import app.tripplanner.fieldguide.BuildConfig
 import app.tripplanner.fieldguide.briefing.BriefingScheduler
 import app.tripplanner.fieldguide.data.ThemeMode
 import app.tripplanner.fieldguide.logic.hhmm
+import app.tripplanner.fieldguide.logic.moneyLabel
 
 @Composable
 private fun SettingRow(title: String, subtitle: String? = null, trailing: @Composable () -> Unit) {
@@ -150,6 +151,7 @@ fun SettingsScreen(vm: AppViewModel) {
                 }) { Text("Notification settings") }
             }
         }
+        item { MoneySettings(vm, trip) }
         item {
             FgCard {
                 SectionTitle("Sync")
@@ -192,6 +194,32 @@ fun SettingsScreen(vm: AppViewModel) {
                 }) { Text("Remove", color = fg.danger) }
             },
             dismissButton = { TextButton(onClick = { confirmUnpair = false }) { Text("Keep") } },
+        )
+    }
+}
+
+/** Trip budget and whether both phones see each other's spends. */
+@Composable
+private fun MoneySettings(vm: AppViewModel, trip: TripUi) {
+    val t = trip.trip ?: return
+    var budgetDialog by remember { mutableStateOf(false) }
+    FgCard {
+        SectionTitle("Money")
+        SettingRow("Trip budget", t.budgetMinor?.let { "${moneyLabel(it, t.localCurrency)} · pre-paid and on-trip spend" } ?: "Not set") {
+            TextButton(onClick = { budgetDialog = true }) { Text(if (t.budgetMinor == null) "Set" else "Change") }
+        }
+        SettingRow("Shared ledger", "On: both phones see every spend. Off: each phone sees only its own.") {
+            Switch(checked = t.sharedLedger, onCheckedChange = vm::setSharedLedger)
+        }
+    }
+    if (budgetDialog) {
+        AmountDialog(
+            title = "Trip budget",
+            body = "Everything counts: pre-paid bookings and spends on the trip. In ${t.localCurrency}.",
+            initial = t.budgetMinor,
+            allowClear = t.budgetMinor != null,
+            onDone = { vm.setBudget(it); budgetDialog = false },
+            onDismiss = { budgetDialog = false },
         )
     }
 }
