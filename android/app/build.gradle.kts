@@ -8,6 +8,14 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// Release builds get their version from the tag, for example APP_VERSION=v0.3.0.
+// versionCode is major * 10000 + minor * 100 + patch, so each release installs over the last.
+val appVersion = System.getenv("APP_VERSION").orEmpty().removePrefix("v").ifEmpty { "0.0.0-dev" }
+val appVersionCode = appVersion.substringBefore("-").split(".").let { parts ->
+    val n = parts.map { it.toIntOrNull() ?: 0 } + listOf(0, 0, 0)
+    maxOf(1, n[0] * 10000 + n[1] * 100 + n[2])
+}
+
 android {
     namespace = "app.tripplanner.fieldguide"
     compileSdk = 35
@@ -16,8 +24,8 @@ android {
         applicationId = "app.tripplanner.fieldguide"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = appVersionCode
+        versionName = appVersion
     }
 
     androidResources {
