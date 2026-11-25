@@ -15,6 +15,7 @@ import app.tripplanner.fieldguide.data.ContextualItemEntity
 import app.tripplanner.fieldguide.data.ExpenseEntity
 import app.tripplanner.fieldguide.data.LocalDoc
 import app.tripplanner.fieldguide.data.LocalDocException
+import app.tripplanner.fieldguide.data.TRIP_DOCS
 import app.tripplanner.fieldguide.data.PairPhase
 import app.tripplanner.fieldguide.data.ShiftPreview
 import app.tripplanner.fieldguide.data.Status
@@ -103,9 +104,11 @@ data class TripUi(
     val byId: Map<String, BlockUi> = emptyMap(),
     /** Documents linked on this phone to a plan that has since been removed in the planner. */
     val orphanDocs: List<FileUi> = emptyList(),
+    /** Documents added in the Wallet for the whole trip, such as passport scans or insurance. */
+    val walletDocs: List<FileUi> = emptyList(),
 ) {
     val scheduled: List<BlockUi> get() = days.flatMap { it.blocks }
-    val files: List<FileUi> get() = byId.values.flatMap { it.files }
+    val files: List<FileUi> get() = byId.values.flatMap { it.files } + walletDocs + orphanDocs
 
     fun today(): DayUi? = days.firstOrNull { it.isToday() }
 
@@ -267,7 +270,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             stays = stays(dayUis.flatMap { it.plans }),
             colliding = colliding,
             byId = blocks.associateBy { it.id },
-            orphanDocs = docs.filter { d -> rows.none { it.block.id == d.blockId } }.map { fileUi(it) },
+            orphanDocs = docs.filter { d -> d.blockId != TRIP_DOCS && rows.none { it.block.id == d.blockId } }.map { fileUi(it) },
+            walletDocs = docs.filter { it.blockId == TRIP_DOCS }.sortedBy { it.addedAt }.map { fileUi(it) },
         )
     }
 

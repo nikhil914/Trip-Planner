@@ -30,6 +30,9 @@ data class LocalDoc(
     @SerialName("added_at") val addedAt: Long,
 )
 
+/** [LocalDoc.blockId] for documents added in the Wallet that belong to the whole trip, not one plan. */
+const val TRIP_DOCS = "trip"
+
 class LocalDocException(message: String) : IOException(message)
 
 /**
