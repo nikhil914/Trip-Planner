@@ -1,5 +1,7 @@
 package app.tripplanner.fieldguide.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -9,17 +11,30 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
+import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.CloudDownload
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -30,11 +45,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import app.tripplanner.fieldguide.data.TRIP_DOCS
 import app.tripplanner.fieldguide.logic.BlockKind
+import app.tripplanner.fieldguide.logic.amount
 import app.tripplanner.fieldguide.logic.KindFamily
 import app.tripplanner.fieldguide.logic.dayLabel
 import app.tripplanner.fieldguide.logic.family
@@ -57,6 +75,12 @@ fun WalletTab(vm: AppViewModel, trip: TripUi) {
     val nav = LocalNav.current
     var filter by rememberSaveable { mutableStateOf(WalletFilter.ALL) }
     var removing by remember { mutableStateOf<FileUi?>(null) }
+    // Saveable: the picker can outlive this screen if the system reclaims the app while it is open.
+    var replacing by rememberSaveable { mutableStateOf<String?>(null) }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.linkDocument(TRIP_DOCS, uri, replacing)
+        replacing = null
+    }
     removing?.let { doc ->
         AlertDialog(
             onDismissRequest = { removing = null },
@@ -90,7 +114,7 @@ fun WalletTab(vm: AppViewModel, trip: TripUi) {
 
     LazyColumn(contentPadding = PaddingValues(FgDims.margin), verticalArrangement = Arrangement.spacedBy(FgDims.gap)) {
         item {
-            if (files.isEmpty()) Callout(Tone.NEUTRAL, "No files attached yet", listOf("Open a plan and tap \"Link original ticket or document\" to keep the PDF on this phone, or add it in the planner."))
+            if (files.isEmpty()) Callout(Tone.NEUTRAL, "No files attached yet", listOf("Tap \"Add document\" below, or open a plan and link its ticket. Files stay on this phone."))
             else if (ready == files.size) Callout(Tone.SUCCESS, "All ${files.size} files on this phone", icon = Icons.Rounded.CheckCircle)
             else Callout(Tone.WARNING, "$ready of ${files.size} files on this phone", listOf("Connect and pull down on Today to download the rest."), icon = Icons.Rounded.CloudDownload)
         }
@@ -109,6 +133,27 @@ fun WalletTab(vm: AppViewModel, trip: TripUi) {
         }
         if (filter == WalletFilter.ALL || filter == WalletFilter.DOCS) {
             item { SectionTitle("Documents") }
+            item {
+                FgCard {
+                    Text("Your documents", style = FgType.cardTitle, color = fg.text)
+                    if (trip.walletDocs.isEmpty()) {
+                        Text("Passport, visa, insurance or any other PDF or photo for this trip. Copied into the app, opens offline, never uploaded.", style = FgType.meta, color = fg.textSecondary)
+                    }
+                    trip.walletDocs.forEachIndexed { i, doc ->
+                        WalletDocRow(
+                            doc = doc,
+                            onOpen = { nav.modal = Modal.Ticket(trip.walletDocs, ticketTitles(trip.walletDocs), i) },
+                            onReplace = { replacing = doc.id; picker.launch(WALLET_DOC_TYPES) },
+                            onRemove = { removing = doc },
+                        )
+                    }
+                    OutlinedButton(onClick = { replacing = null; picker.launch(WALLET_DOC_TYPES) }, modifier = Modifier.fillMaxWidth().heightIn(min = FgDims.touch)) {
+                        Icon(Icons.Rounded.AttachFile, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Add document")
+                    }
+                }
+            }
             if (insurance != null) {
                 item {
                     FgCard(onClick = { nav.push(Route.Safety) }) {
@@ -142,8 +187,35 @@ fun WalletTab(vm: AppViewModel, trip: TripUi) {
                     }
                 }
             }
-            if (insurance == null && unscheduledDocs.isEmpty() && trip.orphanDocs.isEmpty()) {
-                item { Text("Passport scans, insurance and visas attached in the planner show here.", style = FgType.meta, color = fg.textSecondary) }
+        }
+    }
+}
+
+private val WALLET_DOC_TYPES = arrayOf("application/pdf", "image/*")
+
+@Composable
+private fun WalletDocRow(doc: FileUi, onOpen: () -> Unit, onReplace: () -> Unit, onRemove: () -> Unit) {
+    val context = LocalContext.current
+    var menu by remember { mutableStateOf(false) }
+    Row(Modifier.fillMaxWidth().heightIn(min = FgDims.touch), verticalAlignment = Alignment.CenterVertically) {
+        Icon(if (doc.mimeType == "application/pdf") Icons.Rounded.Description else Icons.Rounded.Image, null, tint = fg.textSecondary)
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(doc.fileName, style = FgType.body, color = fg.text, maxLines = 2)
+            Text("${amount(doc.sizeBytes / 1024.0)} KB · only on this phone", style = FgType.meta, color = fg.textSecondary)
+        }
+        TextButton(onClick = onOpen) { Text("Open") }
+        Box {
+            IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, "More for ${doc.fileName}", tint = fg.text) }
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                DropdownMenuItem(
+                    text = { Text("Open in another app") },
+                    leadingIcon = { Icon(Icons.AutoMirrored.Rounded.OpenInNew, null) },
+                    enabled = doc.ready,
+                    onClick = { menu = false; openExternally(context, doc) },
+                )
+                DropdownMenuItem(text = { Text("Replace") }, leadingIcon = { Icon(Icons.Rounded.SwapHoriz, null) }, onClick = { menu = false; onReplace() })
+                DropdownMenuItem(text = { Text("Remove from phone") }, leadingIcon = { Icon(Icons.Rounded.Delete, null) }, onClick = { menu = false; onRemove() })
             }
         }
     }
