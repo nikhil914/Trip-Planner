@@ -22,6 +22,7 @@ import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.CloudDownload
+import androidx.compose.material.icons.rounded.ConfirmationNumber
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Image
@@ -29,6 +30,7 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
@@ -77,10 +79,14 @@ fun WalletTab(vm: AppViewModel, trip: TripUi) {
     var removing by remember { mutableStateOf<FileUi?>(null) }
     // Saveable: the picker can outlive this screen if the system reclaims the app while it is open.
     var replacing by rememberSaveable { mutableStateOf<String?>(null) }
+    /** The plan a picked file goes to. Null means the whole trip ("Your documents"). */
+    var attachTo by rememberSaveable { mutableStateOf<String?>(null) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) vm.linkDocument(TRIP_DOCS, uri, replacing)
+        if (uri != null) vm.linkDocument(attachTo ?: TRIP_DOCS, uri, replacing)
         replacing = null
+        attachTo = null
     }
+    val attachToPlan: (String) -> Unit = { blockId -> replacing = null; attachTo = blockId; picker.launch(WALLET_DOC_TYPES) }
     removing?.let { doc ->
         AlertDialog(
             onDismissRequest = { removing = null },
@@ -120,7 +126,7 @@ fun WalletTab(vm: AppViewModel, trip: TripUi) {
         }
         next?.let { b ->
             item { SectionTitle("Next up") }
-            item { PassCard(b, highlight = true) { nav.modal = Modal.Counter(b.id) } }
+            item { PassCard(b, highlight = true, onShowFiles = { openTicket(nav, b) }, onAttach = { attachToPlan(b.id) }) { nav.modal = Modal.Counter(b.id) } }
         }
         item {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -129,7 +135,7 @@ fun WalletTab(vm: AppViewModel, trip: TripUi) {
         }
         if (filter != WalletFilter.DOCS) {
             if (shown.isEmpty()) item { EmptyState("Nothing here", "No bookings of this kind.") }
-            items(shown, key = { it.id }) { b -> PassCard(b) { nav.modal = Modal.Counter(b.id) } }
+            items(shown, key = { it.id }) { b -> PassCard(b, onShowFiles = { openTicket(nav, b) }, onAttach = { attachToPlan(b.id) }) { nav.modal = Modal.Counter(b.id) } }
         }
         if (filter == WalletFilter.ALL || filter == WalletFilter.DOCS) {
             item { SectionTitle("Documents") }
@@ -143,11 +149,11 @@ fun WalletTab(vm: AppViewModel, trip: TripUi) {
                         WalletDocRow(
                             doc = doc,
                             onOpen = { nav.modal = Modal.Ticket(trip.walletDocs, ticketTitles(trip.walletDocs), i) },
-                            onReplace = { replacing = doc.id; picker.launch(WALLET_DOC_TYPES) },
+                            onReplace = { attachTo = null; replacing = doc.id; picker.launch(WALLET_DOC_TYPES) },
                             onRemove = { removing = doc },
                         )
                     }
-                    OutlinedButton(onClick = { replacing = null; picker.launch(WALLET_DOC_TYPES) }, modifier = Modifier.fillMaxWidth().heightIn(min = FgDims.touch)) {
+                    OutlinedButton(onClick = { attachTo = null; replacing = null; picker.launch(WALLET_DOC_TYPES) }, modifier = Modifier.fillMaxWidth().heightIn(min = FgDims.touch)) {
                         Icon(Icons.Rounded.AttachFile, null)
                         Spacer(Modifier.width(8.dp))
                         Text("Add document")
@@ -228,7 +234,13 @@ private fun KindBadgeIcon() {
 
 /** Airline-pass style card: type colour stripe, title, date, the key code large, then the other reference parts. */
 @Composable
-fun PassCard(b: BlockUi, highlight: Boolean = false, onClick: () -> Unit) {
+fun PassCard(
+    b: BlockUi,
+    highlight: Boolean = false,
+    onShowFiles: (() -> Unit)? = null,
+    onAttach: (() -> Unit)? = null,
+    onClick: () -> Unit,
+) {
     val facts = refFacts(b.e.bookingRef)
     val code = facts.firstOrNull { it.first.equals("PNR", true) || it.first.startsWith("Booking", true) || it.first.equals("Ref", true) }
     val rest = facts.filter { it != code }
@@ -265,6 +277,25 @@ fun PassCard(b: BlockUi, highlight: Boolean = false, onClick: () -> Unit) {
             }
             if (b.plan.flags.incomplete != null) StatusChip("Incomplete", Tone.WARNING)
             if (b.plan.flags.cashOnly) StatusChip("Cash only", Tone.WARNING)
+        }
+        // Buttons handle their own taps, so the rest of the card still opens the booking card.
+        if (onShowFiles != null || onAttach != null) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                if (b.files.isNotEmpty() && onShowFiles != null) {
+                    Button(onClick = onShowFiles, modifier = Modifier.weight(1f).heightIn(min = FgDims.touch)) {
+                        Icon(Icons.Rounded.ConfirmationNumber, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (b.files.size == 1) "Show ticket" else "Show ${b.files.size} files", maxLines = 1)
+                    }
+                }
+                if (onAttach != null) {
+                    OutlinedButton(onClick = onAttach, modifier = Modifier.weight(1f).heightIn(min = FgDims.touch)) {
+                        Icon(Icons.Rounded.AttachFile, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (b.files.isEmpty()) "Attach document" else "Add another", maxLines = 1)
+                    }
+                }
+            }
         }
     }
 }
