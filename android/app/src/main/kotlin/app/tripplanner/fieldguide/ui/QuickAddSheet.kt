@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -20,7 +21,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -30,7 +30,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -43,6 +42,7 @@ import app.tripplanner.fieldguide.logic.PayMethod
 import app.tripplanner.fieldguide.logic.PlanSlot
 import app.tripplanner.fieldguide.logic.SpendCategory
 import app.tripplanner.fieldguide.logic.categoryFor
+import app.tripplanner.fieldguide.logic.dayLabel
 import app.tripplanner.fieldguide.logic.dccRisk
 import app.tripplanner.fieldguide.logic.formatMinor
 import app.tripplanner.fieldguide.logic.keypadInput
@@ -72,9 +72,25 @@ fun QuickAddSheet(vm: AppViewModel, trip: TripUi, money: MoneyUi, request: Quick
     val today = trip.today()
     val phase = trip.phase()
 
+    // The day a spend lands on; null means pre-paid. A spend opened from a day stays on that day, so it shows in
+    // that day's ledger whether or not it is linked to a plan.
+    val day0 = remember(request) {
+        when {
+            editing != null -> if (editing.prepaid) null else editing.dayId
+            request.prepaid -> null
+            request.dayId != null -> request.dayId
+            request.blockId != null && trip.byId[request.blockId]?.day != null && phase != TripPhase.PRE -> trip.byId[request.blockId]?.day?.id
+            today != null -> today.day.id
+            phase == TripPhase.POST -> trip.days.lastOrNull()?.day?.id
+            else -> null
+        }
+    }
+    var dayChoice by rememberSaveable(request) { mutableStateOf(day0) }
+    val dayUi = dayChoice?.let { trip.dayOf(it) }
+
     // The plan suggested when nothing was picked: the one running now, else the last finished one.
     val suggested = remember(request) {
-        if (request.blockId != null || editing != null || !request.suggestPlan || today == null) null
+        if (request.blockId != null || editing != null || !request.suggestPlan || today == null || (day0 != null && day0 != today.day.id)) null
         else suggestPlan(
             today.blocks.mapNotNull { b ->
                 val start = b.e.startMinute ?: return@mapNotNull null
@@ -97,7 +113,6 @@ fun QuickAddSheet(vm: AppViewModel, trip: TripUi, money: MoneyUi, request: Quick
     var method by rememberSaveable(request) { mutableStateOf(editing?.method ?: if (isSpend) PayMethod.CARD else PayMethod.CASH) }
     var note by rememberSaveable(request) { mutableStateOf(editing?.note ?: "") }
     var merchant by rememberSaveable(request) { mutableStateOf(editing?.merchant ?: "") }
-    var prepaid by rememberSaveable(request) { mutableStateOf(editing?.prepaid ?: (phase == TripPhase.PRE)) }
     var billed by rememberSaveable(request) { mutableStateOf(editing?.billedHomeMinor?.let(::amountText) ?: "") }
     var more by rememberSaveable(request) { mutableStateOf(editing != null && (editing.note != null || editing.merchant != null || editing.billedHomeMinor != null)) }
 
@@ -107,10 +122,10 @@ fun QuickAddSheet(vm: AppViewModel, trip: TripUi, money: MoneyUi, request: Quick
     val homeMinor = amount?.let { toHomeMinor(it, currency, t.homeCurrency, rate) }
     val localMinor = amount?.let { if (inHome) Math.round(it / t.exchangeRate) else it }
 
-    // Plans to pick from: the given or saved one, the suggestion, then today's plans in time order.
+    // Plans to pick from: the given or saved one, the suggestion, then the chosen day's (else today's) plans in time order.
     val choices = buildList<BlockUi> {
         listOfNotNull(editing?.blockId, request.blockId, suggested).forEach { id -> trip.byId[id]?.let { if (none { b -> b.id == it.id }) add(it) } }
-        today?.blocks?.filter { !it.plan.isSkipped }?.sortedBy { it.e.startMinute ?: 0 }?.forEach { b -> if (none { it.id == b.id }) add(b) }
+        (dayUi ?: today)?.blocks?.filter { !it.plan.isSkipped }?.sortedBy { it.e.startMinute ?: 0 }?.forEach { b -> if (none { it.id == b.id }) add(b) }
     }
 
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -158,6 +173,7 @@ fun QuickAddSheet(vm: AppViewModel, trip: TripUi, money: MoneyUi, request: Quick
                                 onClick = {
                                     blockId = b.id
                                     if (!categoryTouched) category = categoryFor(b.plan.kind).name
+                                    if (dayChoice != null && b.day != null) dayChoice = b.day.id
                                 },
                                 label = { Text(b.plan.displayTitle, maxLines = 1) },
                                 modifier = Modifier.heightIn(min = FgDims.touch),
@@ -167,6 +183,31 @@ fun QuickAddSheet(vm: AppViewModel, trip: TripUi, money: MoneyUi, request: Quick
                             FilterChip(selected = blockId == null, onClick = { blockId = null }, label = { Text("No plan") }, modifier = Modifier.heightIn(min = FgDims.touch))
                         }
                     }
+                }
+                Text("Day", style = FgType.meta, color = fg.textSecondary)
+                val dayIndex = trip.days.indexOfFirst { it.day.id == day0 }
+                LazyRow(
+                    state = rememberLazyListState(initialFirstVisibleItemIndex = (dayIndex + 1).coerceAtLeast(0)),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    item {
+                        FilterChip(selected = dayChoice == null, onClick = { dayChoice = null }, label = { Text("Pre-paid") }, modifier = Modifier.heightIn(min = FgDims.touch))
+                    }
+                    items(trip.days, key = { it.day.id }) { d ->
+                        FilterChip(
+                            selected = dayChoice == d.day.id,
+                            onClick = {
+                                dayChoice = d.day.id
+                                val linkedDay = blockId?.let { trip.byId[it]?.day?.id }
+                                if (linkedDay != null && linkedDay != d.day.id) blockId = null
+                            },
+                            label = { Text(dayLabel(d.day.dateIso) + if (d.day.id == today?.day?.id) " (today)" else "") },
+                            modifier = Modifier.heightIn(min = FgDims.touch),
+                        )
+                    }
+                }
+                if (dayChoice == null) {
+                    Text("Pre-paid counts in the budget, not in a day's pace.", style = FgType.meta, color = fg.textSecondary)
                 }
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(SpendCategory.entries.toList()) { c ->
@@ -191,19 +232,12 @@ fun QuickAddSheet(vm: AppViewModel, trip: TripUi, money: MoneyUi, request: Quick
             Keypad(onKey = { k -> text = keypadInput(text, k) })
 
             TextButton(onClick = { more = !more }, modifier = Modifier.heightIn(min = FgDims.touch)) {
-                Text(if (more) "Less" else "More: note, place, pre-paid", style = FgType.chip, color = fg.primary)
+                Text(if (more) "Less" else "More: note, place", style = FgType.chip, color = fg.primary)
             }
             if (more) {
                 OutlinedTextField(value = note, onValueChange = { note = it.take(200) }, label = { Text("Note") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 if (isSpend) {
                     OutlinedTextField(value = merchant, onValueChange = { merchant = it.take(120) }, label = { Text("Where") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Pre-paid", style = FgType.body, color = fg.text)
-                            Text("Paid before the trip. Counts in the budget, not in a day's pace.", style = FgType.meta, color = fg.textSecondary)
-                        }
-                        Switch(checked = prepaid, onCheckedChange = { prepaid = it })
-                    }
                     if (method == PayMethod.CARD && currency != t.homeCurrency) {
                         OutlinedTextField(
                             value = billed,
@@ -221,12 +255,11 @@ fun QuickAddSheet(vm: AppViewModel, trip: TripUi, money: MoneyUi, request: Quick
                 onClick = {
                     val a = amount ?: return@Button
                     val now = System.currentTimeMillis()
-                    val block = blockId?.let { trip.byId[it] }
-                    val pre = isSpend && prepaid
+                    val pre = isSpend && dayChoice == null
                     val dayId = when {
-                        pre -> null
-                        editing != null && editing.dayId != null && editing.blockId == blockId -> editing.dayId
-                        block?.day != null -> block.day.id
+                        isSpend -> dayChoice
+                        editing != null -> editing.dayId
+                        request.dayId != null -> request.dayId
                         today != null -> today.day.id
                         phase == TripPhase.POST -> trip.days.lastOrNull()?.day?.id
                         else -> null
