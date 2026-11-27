@@ -44,8 +44,10 @@ data class MoneyUi(
 ) {
     fun row(id: String): ExpenseEntity? = rows.firstOrNull { it.id == id }
     fun forBlock(blockId: String): List<ExpenseEntity> = rows.filter { it.blockId == blockId && it.kind == "SPEND" }
-    fun forDay(dayId: String?): List<ExpenseEntity> =
-        if (dayId == null) rows.filter { it.dayId == null } else rows.filter { it.dayId == dayId }
+    /** A day's rows, plus pre-paid spends linked to its plans, the same rows its actual total counts. */
+    fun forDay(dayId: String?, blockIds: Set<String> = emptySet()): List<ExpenseEntity> =
+        if (dayId == null) rows.filter { it.dayId == null }
+        else rows.filter { it.dayId == dayId || (it.kind == "SPEND" && it.prepaid && it.blockId in blockIds) }
     fun home(minor: Long): Long = Math.round(minor * rate)
 }
 

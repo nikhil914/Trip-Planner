@@ -562,7 +562,7 @@ fun MoneyDayScreen(vm: AppViewModel, trip: TripUi, dayId: String?) {
     val nav = LocalNav.current
     val day = dayId?.let { trip.dayOf(it) }
     val dm = m.days.firstOrNull { it.dayId == dayId }
-    val rows = if (dayId == null) m.rows.filter { it.kind == MoneyKind.SPEND && (it.prepaid || it.dayId == null) } else m.forDay(dayId)
+    val rows = if (dayId == null) m.rows.filter { it.kind == MoneyKind.SPEND && (it.prepaid || it.dayId == null) } else m.forDay(dayId, day?.blocks?.map { it.id }?.toSet().orEmpty())
     LazyColumn(contentPadding = PaddingValues(FgDims.margin), verticalArrangement = Arrangement.spacedBy(FgDims.gap)) {
         item {
             FgCard {
@@ -607,7 +607,7 @@ fun MoneyDayScreen(vm: AppViewModel, trip: TripUi, dayId: String?) {
         items(rows, key = { it.id }) { r -> LedgerRow(vm, trip, m, r) }
         item {
             OutlinedButton(
-                onClick = { vm.openQuickAdd(QuickAddRequest(suggestPlan = dayId == trip.today()?.day?.id)) },
+                onClick = { vm.openQuickAdd(QuickAddRequest(suggestPlan = dayId == trip.today()?.day?.id, dayId = dayId, prepaid = dayId == null)) },
                 modifier = Modifier.fillMaxWidth().heightIn(min = FgDims.touch),
             ) { Text("Log spend") }
         }

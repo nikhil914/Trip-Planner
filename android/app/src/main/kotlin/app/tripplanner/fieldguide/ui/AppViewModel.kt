@@ -142,6 +142,10 @@ data class QuickAddRequest(
     val kind: String = MoneyKind.SPEND,
     val amountMinor: Long? = null,
     val suggestPlan: Boolean = true,
+    /** The day the sheet was opened from, so the spend lands on that day. */
+    val dayId: String? = null,
+    /** Opened from the pre-paid list: start as pre-paid. */
+    val prepaid: Boolean = false,
 )
 
 data class PairingOffer(val serverUrl: String, val code: String)
